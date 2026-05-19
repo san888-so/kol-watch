@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KOL Competitor Watch</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
+  header{padding:16px 24px;background:#1e293b;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  h1{font-size:18px;margin:0}
+  .wrap{padding:20px 24px;max-width:1200px;margin:0 auto}
+  .cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .card{background:#1e293b;border-radius:10px;padding:14px 18px;min-width:120px}
+  .card .n{font-size:24px;font-weight:700}
+  .card .l{font-size:12px;color:#94a3b8}
+  .card.warn .n{color:#f87171}
+  button{background:#3b82f6;color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:#334155}
+  section{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
+  h2{font-size:15px;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #334155;vertical-align:top}
+  th{color:#94a3b8;font-weight:600}
+  a{color:#60a5fa;word-break:break-all}
+  input,textarea{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:7px;font:inherit;width:100%;box-sizing:border-box}
+  label{font-size:12px;color:#94a3b8;display:block;margin:8px 0 3px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  select{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:5px}
+  .badge{font-size:11px;padding:2px 7px;border-radius:99px;background:#334155}
+  .s-new{background:#b91c1c}.s-contacted{background:#b45309}.s-removed{background:#15803d}
+  .muted{color:#94a3b8;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ KOL Competitor-Keyword Watch</h1>
+  <button id="syncBtn" class="ghost">↻ Sync จาก Sheet</button>
+  <button id="runBtn">▶ สแกนเดี๋ยวนี้</button>
+  <span id="status" class="muted"></span>
+  <a href="/logout" style="margin-left:auto;color:#94a3b8;font-size:13px">ออกจากระบบ</a>
+</header>
+<div class="wrap">
+  <div class="cards" id="cards"></div>
+
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <button id="tabWatchBtn">🛡️ เฝ้าระวัง</button>
+    <button id="tabPostsBtn" class="ghost">📰 โพสต์ทั้งหมด</button>
+  </div>
+
+  <div id="tabPosts" style="display:none">
+    <section>
+      <h2>📰 โพสต์ทั้งหมดที่ดึงมา
+        <a href="/api/posts.csv" style="float:right;font-size:13px">⬇ ดาวน์โหลด CSV</a>
+      </h2>
+      <div class="muted" id="postsInfo" style="margin-bottom:8px"></div>
+      <table id="posts"><thead><tr>
+        <th>วันที่โพส</th><th>KOL</th><th>แพลตฟอร์ม</th><th>ข้อความ</th><th>ลิงก์</th><th></th>
+      </tr></thead><tbody></tbody></table>
+      <div class="muted" id="postsEmpty" style="display:none">ยังไม่มีข้อมูล — กด "สแกนเดี๋ยวนี้" ก่อน แล้วข้อมูลจะเข้ามาที่นี่</div>
+    </section>
+  </div>
+
+  <div id="tabWatch">
+  <section>
+    <h2>⚠️ โพสต์ที่เจอคำคู่แข่ง</h2>
+    <table id="hits"><thead><tr>
+      <th>เวลา</th><th>KOL</th><th>แพลตฟอร์ม</th><th>คำ</th><th>ข้อความ</th><th>ลิงก์</th><th>สถานะ</th>
+    </tr></thead><tbody></tbody></table>
+    <div class="muted" id="hitsEmpty" style="display:none">ยังไม่พบโพสต์ที่ผิด 🎉</div>
+  </section>
+
+  <section>
+    <h2>❌ ช่องที่เช็กไม่ได้ (private/บล็อก)</h2>
+    <table id="blocked"><thead><tr><th>KOL</th><th>แพลตฟอร์ม</th><th>ลิงก์</th><th>error</th></tr></thead><tbody></tbody></table>
+    <div class="muted" id="blockedEmpty" style="display:none">— ไม่มี —</div>
+  </section>
+
+  <section>
+    <h2>🔗 ลิงก์ใน Sheet ที่อ่านไม่ออก (ให้ทีมไปแก้ใน Sheet)</h2>
+    <table id="unres"><thead><tr><th>KOL</th><th>แพลตฟอร์ม</th><th>ค่าใน Sheet</th><th>เหตุผล</th></tr></thead><tbody></tbody></table>
+    <div class="muted" id="unresEmpty" style="display:none">— ไม่มี —</div>
+  </section>
+
+  <section>
+    <h2>⚙️ ตั้งค่า</h2>
+    <div class="grid">
+      <div><label>Google Sheet ID / URL</label><input id="sheet_id"></div>
+      <div><label>เวลาสแกน (คั่นด้วย ,)</label><input id="run_times" placeholder="08:00,16:00"></div>
+      <div><label>LINE channel access token (เว้นว่าง=ไม่เปลี่ยน)</label><input id="line_token" placeholder="••••••"></div>
+      <div><label>LINE ปลายทาง (userId/groupId)</label><input id="line_to"></div>
+      <div><label>จำนวนโพสต์ที่ดึงต่อช่อง/รอบ</label><input id="posts_per_check"></div>
+      <div><label>เปิดสแกนอัตโนมัติ (1/0)</label><input id="auto_enabled"></div>
+    </div>
+    <label>Watchlist (JSON: {"คำหลัก":["variant",...]})</label>
+    <textarea id="watchlist" rows="5"></textarea>
+    <div style="margin-top:12px"><button id="saveBtn">บันทึกการตั้งค่า</button></div>
+  </section>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+async function jpost(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});return r.json();}
+function esc(s){return (s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+async function refresh(){
+  const d=await (await fetch("/api/state")).json();
+  const c=d.counts;
+  $("#cards").innerHTML=`
+   <div class="card"><div class="n">${c.kols}</div><div class="l">KOL</div></div>
+   <div class="card"><div class="n">${c.channels}</div><div class="l">ช่องทาง</div></div>
+   <div class="card ${d.hits.length?'warn':''}"><div class="n">${d.hits.length}</div><div class="l">เจอคำคู่แข่ง</div></div>
+   <div class="card ${c.blocked?'warn':''}"><div class="n">${c.blocked}</div><div class="l">เช็กไม่ได้</div></div>
+   <div class="card"><div class="n">${d.unresolved.length}</div><div class="l">ลิงก์เสีย</div></div>
+   <div class="card"><div class="l">แยกแพลตฟอร์ม</div><div class="muted">${Object.entries(c.by_platform).map(([k,v])=>k+":"+v).join("  ")}</div></div>`;
+  const pr=d.progress;
+  $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+pr.last_run):"");
+  $("#runBtn").disabled=pr.running;
+
+  const hb=$("#hits tbody");hb.innerHTML="";
+  $("#hitsEmpty").style.display=d.hits.length?"none":"block";
+  for(const h of d.hits){
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td class="muted">${esc(h.detected_at||"").slice(0,16).replace("T"," ")}</td>
+     <td>${esc(h.kol_name)}</td><td>${esc(h.platform)}</td>
+     <td><span class="badge">${esc(h.matched_keyword)}</span></td>
+     <td>${esc((h.snippet||"").slice(0,90))}</td>
+     <td><a href="${esc(h.post_url)}" target="_blank">เปิด</a></td>
+     <td><select data-id="${h.id}">
+       ${["new","contacted","removed"].map(s=>`<option value="${s}" ${h.handle_status===s?"selected":""}>${s}</option>`).join("")}
+     </select></td>`;
+    hb.appendChild(tr);
+  }
+  hb.querySelectorAll("select").forEach(sel=>sel.onchange=()=>jpost("/api/hit_status",{id:sel.dataset.id,status:sel.value}));
+
+  const bb=$("#blocked tbody");bb.innerHTML="";
+  $("#blockedEmpty").style.display=d.blocked.length?"none":"block";
+  for(const b of d.blocked) bb.insertAdjacentHTML("beforeend",
+    `<tr><td>${esc(b.kol)}</td><td>${esc(b.platform)}</td><td><a href="${esc(b.url)}" target="_blank">${esc(b.url).slice(0,50)}</a></td><td class="muted">${esc((b.error||"").slice(0,80))}</td></tr>`);
+
+  const ub=$("#unres tbody");ub.innerHTML="";
+  $("#unresEmpty").style.display=d.unresolved.length?"none":"block";
+  for(const u of d.unresolved) ub.insertAdjacentHTML("beforeend",
+    `<tr><td>${esc(u.kol_name)}</td><td>${esc(u.platform)}</td><td class="muted">${esc((u.raw_value||"").slice(0,55))}</td><td class="muted">${esc(u.reason)}</td></tr>`);
+
+  const s=d.settings;
+  if(document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA"){
+    $("#sheet_id").value=s.sheet_id;$("#run_times").value=s.run_times;
+    $("#line_to").value=s.line_to;$("#posts_per_check").value=s.posts_per_check;
+    $("#auto_enabled").value=s.auto_enabled;
+    try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
+    $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
+  }
+}
+$("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}`);$("#syncBtn").disabled=false;refresh();};
+$("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
+$("#saveBtn").onclick=async()=>{
+  const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
+    posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value};
+  if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();
+  const r=await jpost("/api/settings",b);alert(r.error?r.error:"บันทึกแล้ว");$("#line_token").value="";refresh();
+};
+let curTab="watch";
+function showTab(t){
+  curTab=t;
+  $("#tabWatch").style.display=t==="watch"?"block":"none";
+  $("#tabPosts").style.display=t==="posts"?"block":"none";
+  $("#tabWatchBtn").className=t==="watch"?"":"ghost";
+  $("#tabPostsBtn").className=t==="posts"?"":"ghost";
+  if(t==="posts")loadPosts();
+}
+$("#tabWatchBtn").onclick=()=>showTab("watch");
+$("#tabPostsBtn").onclick=()=>showTab("posts");
+
+async function loadPosts(){
+  const d=await (await fetch("/api/posts")).json();
+  const tb=$("#posts tbody");tb.innerHTML="";
+  $("#postsEmpty").style.display=d.posts.length?"none":"block";
+  $("#postsInfo").textContent=`ทั้งหมด ${d.posts.length} โพสต์`;
+  for(const p of d.posts){
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td class="muted" style="white-space:nowrap">${esc((p.posted_at||"—").slice(0,10))}</td>
+     <td>${esc(p.kol_name)}</td><td>${esc(p.platform)}</td>
+     <td>${esc((p.caption||"").slice(0,160))}${p.matched?' <span class="badge s-new">เจอคำ</span>':''}</td>
+     <td><a href="${esc(p.post_url)}" target="_blank">เปิด</a></td>
+     <td class="muted">${esc(p.hashtags||"")}</td>`;
+    tb.appendChild(tr);
+  }
+}
+refresh();setInterval(()=>{if(curTab==="watch")refresh();},5000);
+</script>
+</body>
+</html>

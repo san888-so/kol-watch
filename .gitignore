@@ -1,0 +1,19 @@
+# Local data — never commit (contains scraped posts + state)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets
+.env
+providers.json
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Editor / OS
+.DS_Store
+.claude/
