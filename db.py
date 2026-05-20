@@ -5,7 +5,11 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "watch.db")
+DATA_DIR = os.environ.get(
+    "KOLWATCH_DATA_DIR",
+    os.path.join(os.path.dirname(__file__), "data"),
+)
+DB_PATH = os.path.join(DATA_DIR, "watch.db")
 _lock = threading.Lock()
 
 SCHEMA = """

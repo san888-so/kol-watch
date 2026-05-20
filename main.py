@@ -15,7 +15,8 @@ import db
 import registry
 import scheduler
 
-PORT = int(os.environ.get("KOLWATCH_PORT", "5070"))
+# Railway injects PORT; locally use KOLWATCH_PORT (default 5070).
+PORT = int(os.environ.get("PORT") or os.environ.get("KOLWATCH_PORT") or "5070")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Dashboard credentials — must be supplied via env (no defaults so no
@@ -264,13 +265,18 @@ def main():
     stop = threading.Event()
     threading.Thread(target=scheduler.scheduler_thread, args=(stop,),
                      daemon=True).start()
-    srv = HTTPServer(("127.0.0.1", PORT), Handler)
-    url = f"http://127.0.0.1:{PORT}"
+    # Local default 127.0.0.1; on a hosted env (Railway sets PORT) bind
+    # 0.0.0.0 so the platform's router can reach us. Override via env.
+    default_host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    host = os.environ.get("KOLWATCH_HOST", default_host)
+    srv = HTTPServer((host, PORT), Handler)
+    url = f"http://{host}:{PORT}"
     print(f"KOL Watch running at {url}")
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+    if host == "127.0.0.1":
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

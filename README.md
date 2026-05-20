@@ -47,6 +47,26 @@ The Google Sheet must be link-readable. Expected columns (5 leading blank
 columns, header on row 1): KOL name, Tier, Exclusivity, primary link, then
 Facebook, Youtube, Tiktok, X, IG, Lemon8.
 
+## Deploy to Railway (always-on, no laptop required)
+
+Repo includes a `Dockerfile` (Playwright + Chromium baked in) and reads
+config from env. Steps in the Railway dashboard:
+
+1. **New Project → Deploy from GitHub repo** → pick this repo.
+2. **Variables** — add:
+   - `APIFY_TOKEN`, `BRIGHTDATA_TOKEN`
+   - `KOLWATCH_USER`, `KOLWATCH_PASS` (your dashboard login)
+   - `TZ=Asia/Bangkok` (so the 08:00/16:00 cron runs in Thai time)
+3. **Settings → Networking → Generate Domain** to get a public `https://…up.railway.app` URL.
+4. **Settings → Volumes → New Volume** mounted at `/data` — keeps the
+   SQLite DB across redeploys (set/keep `KOLWATCH_DATA_DIR=/data`, the
+   Dockerfile already sets this).
+5. Deploy. Open the URL, log in, fill in **Settings**: Google Sheet ID,
+   LINE token + target id, then press **Sync จาก Sheet**.
+
+The container binds `0.0.0.0:$PORT` automatically when Railway sets
+`PORT`; local runs keep using `127.0.0.1:5070`.
+
 ## Notes
 
 - `data/` (SQLite: collected posts + state) is gitignored — local only.
