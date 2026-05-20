@@ -7,6 +7,12 @@ keyword scan -> on hit: record + immediate LINE push. End of run: digest.
 import threading
 import traceback
 from datetime import datetime, timezone
+try:
+    from zoneinfo import ZoneInfo
+    TH_TZ = ZoneInfo("Asia/Bangkok")
+except Exception:  # pragma: no cover  — fall back to a fixed +07:00 offset
+    from datetime import timezone as _tz, timedelta as _td
+    TH_TZ = _tz(_td(hours=7))
 
 import db
 import matcher
@@ -85,7 +91,7 @@ def run_once(triggered_by="manual"):
                               last_checked=datetime.now(timezone.utc).isoformat())
             PROGRESS["done"] += 1
 
-        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        stamp = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
         unresolved = len(db.list_unresolved())
         summary = (
             f"📋 KOL Watch — รอบ {stamp} ({triggered_by})\n"
@@ -104,25 +110,32 @@ def run_once(triggered_by="manual"):
 
 
 def scheduler_thread(stop_event):
-    """Fire run_once when wall-clock crosses any configured run time."""
-    last_fired = {}  # "HH:MM" -> date string
+    """Fire run_once when Bangkok wall-clock crosses any configured time.
+
+    Times in `run_times` (e.g. 08:00,16:00) are always interpreted in
+    Asia/Bangkok — the comparison is timezone-aware, so it works whether
+    the container's OS TZ is UTC, Bangkok, or anything else.
+    """
+    last_fired = {}  # "HH:MM" -> date string (in Bangkok)
     while not stop_event.is_set():
         try:
             if (db.get_setting("auto_enabled", "1") or "1") == "1":
                 times = [t.strip() for t in
                          (db.get_setting("run_times", "08:00,16:00") or "").split(",")
                          if t.strip()]
-                now = datetime.now()
+                now = datetime.now(TH_TZ)
                 today = now.strftime("%Y-%m-%d")
                 for hhmm in times:
                     try:
-                        target = datetime.strptime(f"{today} {hhmm}", "%Y-%m-%d %H:%M")
+                        target = datetime.strptime(
+                            f"{today} {hhmm}", "%Y-%m-%d %H:%M"
+                        ).replace(tzinfo=TH_TZ)
                     except ValueError:
                         continue
                     if (last_fired.get(hhmm) != today and now >= target
                             and (now - target).total_seconds() < 600):
                         last_fired[hhmm] = today
-                        run_once(triggered_by=f"auto {hhmm}")
+                        run_once(triggered_by=f"auto {hhmm} TH")
         except Exception:
             traceback.print_exc()
         stop_event.wait(30)
