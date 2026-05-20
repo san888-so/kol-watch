@@ -88,7 +88,10 @@
       <div><label>Google Sheet ID / URL</label><input id="sheet_id"></div>
       <div><label>เวลาสแกน (คั่นด้วย ,)</label><input id="run_times" placeholder="08:00,16:00"></div>
       <div><label>LINE channel access token (เว้นว่าง=ไม่เปลี่ยน)</label><input id="line_token" placeholder="••••••"></div>
-      <div><label>LINE ปลายทาง (userId/groupId)</label><input id="line_to"></div>
+      <div>
+        <label>LINE ปลายทาง (userId/groupId)</label><input id="line_to">
+        <div id="lineSources" class="muted" style="margin-top:6px;font-size:12px"></div>
+      </div>
       <div><label>จำนวนโพสต์ที่ดึงต่อช่อง/รอบ</label><input id="posts_per_check"></div>
       <div><label>เปิดสแกนอัตโนมัติ (1/0)</label><input id="auto_enabled"></div>
     </div>
@@ -150,6 +153,14 @@ async function refresh(){
     $("#auto_enabled").value=s.auto_enabled;
     try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
     $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
+  }
+  const ls=$("#lineSources");
+  if(!d.line_sources.length){
+    ls.innerHTML='ยังไม่มี id ที่จับได้ — ตั้ง Webhook URL = <code>/webhook</code> ใน LINE Developers แล้วพิมพ์ในกลุ่ม';
+  } else {
+    ls.innerHTML='id ที่จับได้จาก webhook (กดเพื่อใส่ในช่องด้านบน):<br>'+
+      d.line_sources.map(s=>`<a href="#" data-id="${esc(s.source_id)}" class="lsrc">[${esc(s.source_type)}] ${esc(s.source_id).slice(0,18)}…</a> <span class="muted">${esc((s.last_text||'').slice(0,30))}</span>`).join('<br>');
+    ls.querySelectorAll('a.lsrc').forEach(a=>a.onclick=e=>{e.preventDefault();$("#line_to").value=a.dataset.id;});
   }
 }
 $("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}`);$("#syncBtn").disabled=false;refresh();};

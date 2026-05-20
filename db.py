@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS line_source (
+    source_id TEXT PRIMARY KEY,
+    source_type TEXT,
+    last_seen TEXT NOT NULL,
+    last_user TEXT,
+    last_text TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_channel_kol ON channel(kol_id);
 CREATE INDEX IF NOT EXISTS idx_seen_channel ON seen_post(channel_id, post_id);
 CREATE INDEX IF NOT EXISTS idx_hit_status ON hit(handle_status, detected_at);
@@ -287,3 +295,25 @@ def list_unresolved():
     with _conn() as c:
         return [dict(r) for r in c.execute(
             "SELECT * FROM unresolved ORDER BY kol_name").fetchall()]
+
+
+# --- LINE source capture (from /webhook) ---
+
+def record_line_source(source_id, source_type, last_user="", last_text=""):
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _conn() as c:
+        c.execute("""INSERT INTO line_source(source_id,source_type,last_seen,last_user,last_text)
+            VALUES(?,?,?,?,?)
+            ON CONFLICT(source_id) DO UPDATE SET
+              source_type=excluded.source_type,
+              last_seen=excluded.last_seen,
+              last_user=excluded.last_user,
+              last_text=excluded.last_text""",
+            (source_id, source_type, now, last_user, last_text))
+
+
+def list_line_sources(limit=20):
+    with _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM line_source ORDER BY last_seen DESC LIMIT ?",
+            (limit,)).fetchall()]

@@ -76,6 +76,7 @@ def api_state():
         },
         "hits": db.list_hits(),
         "unresolved": db.list_unresolved(),
+        "line_sources": db.list_line_sources(),
         "blocked": [{"kol": c["kol_name"], "platform": c["platform"],
                      "url": c["profile_url"], "error": c.get("last_error")}
                     for c in blocked],
@@ -218,6 +219,29 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        # LINE webhook — open endpoint (LINE servers can't log in). Captures
+        # source ids (user/group/room) so the operator can pick one in UI.
+        if path == "/webhook":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(n).decode("utf-8") if n else ""
+                data = json.loads(body) if body else {}
+                for ev in (data.get("events") or []):
+                    src = ev.get("source") or {}
+                    st = src.get("type") or ""
+                    sid = src.get(f"{st}Id") if st else None
+                    if not sid:
+                        continue
+                    msg = ev.get("message") or {}
+                    db.record_line_source(
+                        sid, st,
+                        last_user=src.get("userId") or "",
+                        last_text=(msg.get("text") or "")[:120])
+            except Exception:
+                traceback.print_exc()
+            # LINE just wants a 200 — body content is ignored.
+            self.send_response(200); self.send_header("Content-Length", "0"); self.end_headers()
+            return
         if path == "/login":
             n = int(self.headers.get("Content-Length", "0"))
             form = parse_qs(self.rfile.read(n).decode("utf-8")) if n else {}
