@@ -1,8 +1,11 @@
-"""LINE push notifications via Messaging API.
+"""LINE notifications via Messaging API.
 
-Needs settings: line_token (channel access token), line_to (user/group id).
-push() -> a per-hit alert (KOL, platform, keyword, post link, snippet).
-digest() -> end-of-run summary.
+Delivery mode is the `line_mode` setting:
+  - "broadcast" (default) -> /message/broadcast — reaches EVERYONE who
+    added the bot, no per-person setup. Ignores line_to.
+  - "push"               -> /message/push to a single line_to (user/group).
+
+push_hit() -> a per-hit alert; digest() -> end-of-run summary.
 """
 import json
 from urllib.request import Request, urlopen
@@ -10,15 +13,27 @@ from urllib.request import Request, urlopen
 import db
 
 _PUSH = "https://api.line.me/v2/bot/message/push"
+_BROADCAST = "https://api.line.me/v2/bot/message/broadcast"
 
 
 def _send(messages):
     token = (db.get_setting("line_token", "") or "").strip()
-    to = (db.get_setting("line_to", "") or "").strip()
-    if not token or not to:
-        return False, "line_token / line_to not configured"
-    body = json.dumps({"to": to, "messages": messages}).encode("utf-8")
-    req = Request(_PUSH, data=body, method="POST", headers={
+    if not token:
+        return False, "line_token not configured"
+    mode = (db.get_setting("line_mode", "broadcast") or "broadcast").strip()
+
+    if mode == "push":
+        to = (db.get_setting("line_to", "") or "").strip()
+        if not to:
+            return False, "line_to not configured (push mode)"
+        url = _PUSH
+        payload = {"to": to, "messages": messages}
+    else:  # broadcast — everyone who added the bot
+        url = _BROADCAST
+        payload = {"messages": messages}
+
+    body = json.dumps(payload).encode("utf-8")
+    req = Request(url, data=body, method="POST", headers={
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}",
     })

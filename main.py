@@ -87,6 +87,7 @@ def api_state():
             "sheet_id": db.get_setting("sheet_id", ""),
             "line_token_set": bool(db.get_setting("line_token", "")),
             "line_to": db.get_setting("line_to", ""),
+            "line_mode": db.get_setting("line_mode", "broadcast"),
             "posts_per_check": db.get_setting("posts_per_check", "10"),
             "watchlist": db.get_setting("watchlist", "{}"),
         },
@@ -124,7 +125,7 @@ def api_hit_status(payload):
 
 def api_settings(payload):
     for k in ("run_times", "auto_enabled", "sheet_id", "line_to",
-              "posts_per_check", "watchlist"):
+              "line_mode", "posts_per_check", "watchlist"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):

@@ -104,6 +104,7 @@ DEFAULT_SETTINGS = {
     }, ensure_ascii=False),
     "line_token": "",
     "line_to": "",
+    "line_mode": "broadcast",
     "posts_per_check": "10",
 }
 

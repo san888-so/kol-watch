@@ -89,7 +89,14 @@
       <div><label>เวลาสแกน (คั่นด้วย ,)</label><input id="run_times" placeholder="08:00,16:00"></div>
       <div><label>LINE channel access token (เว้นว่าง=ไม่เปลี่ยน)</label><input id="line_token" placeholder="••••••"></div>
       <div>
-        <label>LINE ปลายทาง (userId/groupId)</label><input id="line_to">
+        <label>โหมดส่ง LINE</label>
+        <select id="line_mode" style="width:100%">
+          <option value="broadcast">Broadcast — ทุกคนที่ add bot</option>
+          <option value="push">Push — เฉพาะปลายทางด้านล่าง</option>
+        </select>
+      </div>
+      <div>
+        <label>LINE ปลายทาง (เฉพาะโหมด Push: userId/groupId)</label><input id="line_to">
         <div id="lineSources" class="muted" style="margin-top:6px;font-size:12px"></div>
       </div>
       <div><label>จำนวนโพสต์ที่ดึงต่อช่อง/รอบ</label><input id="posts_per_check"></div>
@@ -149,7 +156,7 @@ async function refresh(){
   const s=d.settings;
   if(document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA"){
     $("#sheet_id").value=s.sheet_id;$("#run_times").value=s.run_times;
-    $("#line_to").value=s.line_to;$("#posts_per_check").value=s.posts_per_check;
+    $("#line_to").value=s.line_to;$("#line_mode").value=s.line_mode||"broadcast";$("#posts_per_check").value=s.posts_per_check;
     $("#auto_enabled").value=s.auto_enabled;
     try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
     $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
@@ -167,6 +174,7 @@ $("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost(
 $("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
 $("#saveBtn").onclick=async()=>{
   const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
+    line_mode:$("#line_mode").value,
     posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value};
   if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();
   const r=await jpost("/api/settings",b);alert(r.error?r.error:"บันทึกแล้ว");$("#line_token").value="";refresh();
