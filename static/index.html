@@ -112,6 +112,16 @@
 const $=s=>document.querySelector(s);
 async function jpost(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});return r.json();}
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+// Render any stored UTC timestamp in Thai time (GMT+7). Date-only values
+// (YYYY-MM-DD, e.g. posted_at from some platforms) are kept as-is.
+function fmtTH(iso, withTime=true){
+  if(!iso) return "—";
+  if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d=new Date(iso); if(isNaN(d)) return iso;
+  const o={timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'};
+  if(withTime){o.hour='2-digit';o.minute='2-digit';o.hour12=false;}
+  return new Intl.DateTimeFormat('sv-SE',o).format(d);
+}
 
 async function refresh(){
   const d=await (await fetch("/api/state")).json();
@@ -124,14 +134,14 @@ async function refresh(){
    <div class="card"><div class="n">${d.unresolved.length}</div><div class="l">ลิงก์เสีย</div></div>
    <div class="card"><div class="l">แยกแพลตฟอร์ม</div><div class="muted">${Object.entries(c.by_platform).map(([k,v])=>k+":"+v).join("  ")}</div></div>`;
   const pr=d.progress;
-  $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+pr.last_run):"");
+  $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+fmtTH(pr.last_run)+" น. (GMT+7)"):"");
   $("#runBtn").disabled=pr.running;
 
   const hb=$("#hits tbody");hb.innerHTML="";
   $("#hitsEmpty").style.display=d.hits.length?"none":"block";
   for(const h of d.hits){
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td class="muted">${esc(h.detected_at||"").slice(0,16).replace("T"," ")}</td>
+    tr.innerHTML=`<td class="muted">${fmtTH(h.detected_at)}</td>
      <td>${esc(h.kol_name)}</td><td>${esc(h.platform)}</td>
      <td><span class="badge">${esc(h.matched_keyword)}</span></td>
      <td>${esc((h.snippet||"").slice(0,90))}</td>
@@ -198,7 +208,7 @@ async function loadPosts(){
   $("#postsInfo").textContent=`ทั้งหมด ${d.posts.length} โพสต์`;
   for(const p of d.posts){
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td class="muted" style="white-space:nowrap">${esc((p.posted_at||"—").slice(0,10))}</td>
+    tr.innerHTML=`<td class="muted" style="white-space:nowrap">${fmtTH(p.posted_at)}</td>
      <td>${esc(p.kol_name)}</td><td>${esc(p.platform)}</td>
      <td>${esc((p.caption||"").slice(0,160))}${p.matched?' <span class="badge s-new">เจอคำ</span>':''}</td>
      <td><a href="${esc(p.post_url)}" target="_blank">เปิด</a></td>
