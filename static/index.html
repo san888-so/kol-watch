@@ -37,6 +37,7 @@
   <h1>🛡️ KOL Competitor-Keyword Watch</h1>
   <button id="syncBtn" class="ghost">↻ Sync จาก Sheet</button>
   <button id="runBtn">▶ สแกนเดี๋ยวนี้</button>
+  <button id="stopBtn" class="ghost" style="display:none">■ หยุด</button>
   <span id="status" class="muted"></span>
   <a href="/logout" style="margin-left:auto;color:#94a3b8;font-size:13px">ออกจากระบบ</a>
 </header>
@@ -138,6 +139,8 @@ async function refresh(){
   const pr=d.progress;
   $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+fmtTH(pr.last_run)+" น. (GMT+7)"):"");
   $("#runBtn").disabled=pr.running;
+  $("#runBtn").style.display=pr.running?"none":"";
+  $("#stopBtn").style.display=pr.running?"":"none";
 
   const hb=$("#hits tbody");hb.innerHTML="";
   $("#hitsEmpty").style.display=d.hits.length?"none":"block";
@@ -185,6 +188,7 @@ async function refresh(){
 }
 $("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}`);$("#syncBtn").disabled=false;refresh();};
 $("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
+$("#stopBtn").onclick=async()=>{$("#stopBtn").disabled=true;await jpost("/api/stop",{});$("#stopBtn").disabled=false;refresh();};
 $("#saveBtn").onclick=async()=>{
   const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
     line_mode:$("#line_mode").value,

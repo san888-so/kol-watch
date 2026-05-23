@@ -22,11 +22,23 @@ import collectors
 PROGRESS = {"running": False, "current": "", "done": 0, "total": 0,
             "last_run": None, "summary": ""}
 
+# Set by the Stop button; run_once checks it between channels and bails out.
+_STOP = threading.Event()
+
+
+def request_stop():
+    if PROGRESS["running"]:
+        _STOP.set()
+        return True
+    return False
+
 
 def run_once(triggered_by="manual"):
     if PROGRESS["running"]:
         return {"error": "already running"}
     PROGRESS.update(running=True, done=0, current="", summary="")
+    _STOP.clear()
+    stopped = False
     # Only scan platforms the operator enabled (cost control — e.g. drop
     # Facebook, which is ~80% of the Apify bill, when budget is tight).
     enabled = {p.strip() for p in
@@ -43,6 +55,9 @@ def run_once(triggered_by="manual"):
     new_posts = hits = blocked = 0
     try:
         for ch in channels:
+            if _STOP.is_set():
+                stopped = True
+                break
             PROGRESS["current"] = f"{ch['kol_name']} / {ch['platform']}"
             try:
                 posts = collectors.collect(ch, limit=limit)
@@ -96,19 +111,23 @@ def run_once(triggered_by="manual"):
 
         stamp = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
         unresolved = len(db.list_unresolved())
+        head = "🛑 หยุดโดยผู้ใช้" if stopped else "📋 KOL Watch"
+        scanned = f"{PROGRESS['done']}/{len(channels)}" if stopped else str(len(channels))
         summary = (
-            f"📋 KOL Watch — รอบ {stamp} ({triggered_by})\n"
-            f"ช่องที่สแกน: {len(channels)}\n"
+            f"{head} — รอบ {stamp} ({triggered_by})\n"
+            f"ช่องที่สแกน: {scanned}\n"
             f"โพสต์ใหม่: {new_posts}\n"
             f"⚠️ เจอคำคู่แข่ง: {hits}\n"
             f"❌ เช็กไม่ได้ (private/บล็อก): {blocked}\n"
             f"🔗 ลิงก์ใน Sheet ที่อ่านไม่ออก: {unresolved}"
         )
         PROGRESS["summary"] = summary
-        notify_line.digest([summary])
+        if not stopped:  # don't LINE-spam a digest on a manual stop
+            notify_line.digest([summary])
     finally:
         PROGRESS.update(running=False, current="",
                         last_run=datetime.now(timezone.utc).isoformat())
+        _STOP.clear()
     return {"ok": True, "new_posts": new_posts, "hits": hits, "blocked": blocked}
 
 

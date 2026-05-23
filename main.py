@@ -117,6 +117,11 @@ def api_run():
     return {"ok": True}, 200
 
 
+def api_stop():
+    return ({"ok": True} if scheduler.request_stop()
+            else {"error": "no run in progress"}), 200
+
+
 def api_hit_status(payload):
     hid = payload.get("id")
     status = payload.get("status")
@@ -273,6 +278,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_sync(payload)
             elif path == "/api/run":
                 r, c = api_run()
+            elif path == "/api/stop":
+                r, c = api_stop()
             elif path == "/api/hit_status":
                 r, c = api_hit_status(payload)
             elif path == "/api/settings":
