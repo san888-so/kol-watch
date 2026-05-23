@@ -27,12 +27,18 @@ def run_once(triggered_by="manual"):
     if PROGRESS["running"]:
         return {"error": "already running"}
     PROGRESS.update(running=True, done=0, current="", summary="")
-    channels = db.list_channels()
+    # Only scan platforms the operator enabled (cost control — e.g. drop
+    # Facebook, which is ~80% of the Apify bill, when budget is tight).
+    enabled = {p.strip() for p in
+               (db.get_setting("scan_platforms",
+                               "youtube,lemon8,tiktok,instagram,facebook,x")
+                or "").split(",") if p.strip()}
+    channels = [c for c in db.list_channels() if c["platform"] in enabled]
     PROGRESS["total"] = len(channels)
     try:
-        limit = int(db.get_setting("posts_per_check", "10") or "10")
+        limit = int(db.get_setting("posts_per_check", "3") or "3")
     except ValueError:
-        limit = 10
+        limit = 3
 
     new_posts = hits = blocked = 0
     try:

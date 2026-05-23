@@ -105,7 +105,9 @@ DEFAULT_SETTINGS = {
     "line_token": "",
     "line_to": "",
     "line_mode": "broadcast",
-    "posts_per_check": "10",
+    "posts_per_check": "3",
+    "enable_bd_fallback": "0",
+    "scan_platforms": "youtube,lemon8,tiktok,instagram,facebook,x",
 }
 
 

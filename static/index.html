@@ -99,8 +99,10 @@
         <label>LINE ปลายทาง (เฉพาะโหมด Push: userId/groupId)</label><input id="line_to">
         <div id="lineSources" class="muted" style="margin-top:6px;font-size:12px"></div>
       </div>
-      <div><label>จำนวนโพสต์ที่ดึงต่อช่อง/รอบ</label><input id="posts_per_check"></div>
+      <div><label>จำนวนโพสต์ที่ดึงต่อช่อง/รอบ (ยิ่งน้อยยิ่งถูก — แนะนำ 3)</label><input id="posts_per_check"></div>
       <div><label>เปิดสแกนอัตโนมัติ (1/0)</label><input id="auto_enabled"></div>
+      <div><label>แพลตฟอร์มที่สแกน (คั่นด้วย , — ตัด facebook ออกลดค่าใช้จ่าย ~80%)</label><input id="scan_platforms"></div>
+      <div><label>ใช้ Brightdata เป็น fallback เมื่อ Apify หมด (1/0 — แนะนำ 0 กันเงินไหล)</label><input id="enable_bd_fallback"></div>
     </div>
     <label>Watchlist (JSON: {"คำหลัก":["variant",...]})</label>
     <textarea id="watchlist" rows="5"></textarea>
@@ -168,6 +170,7 @@ async function refresh(){
     $("#sheet_id").value=s.sheet_id;$("#run_times").value=s.run_times;
     $("#line_to").value=s.line_to;$("#line_mode").value=s.line_mode||"broadcast";$("#posts_per_check").value=s.posts_per_check;
     $("#auto_enabled").value=s.auto_enabled;
+    $("#scan_platforms").value=s.scan_platforms||"";$("#enable_bd_fallback").value=s.enable_bd_fallback||"0";
     try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
     $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
   }
@@ -185,7 +188,8 @@ $("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
 $("#saveBtn").onclick=async()=>{
   const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
     line_mode:$("#line_mode").value,
-    posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value};
+    posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value,
+    scan_platforms:$("#scan_platforms").value,enable_bd_fallback:$("#enable_bd_fallback").value};
   if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();
   const r=await jpost("/api/settings",b);alert(r.error?r.error:"บันทึกแล้ว");$("#line_token").value="";refresh();
 };
