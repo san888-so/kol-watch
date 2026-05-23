@@ -1,2 +1,5 @@
 requests>=2.28
-playwright>=1.40
+# Pin to match the Chromium bundled in the Dockerfile base image
+# (mcr.microsoft.com/playwright/python:v1.49.1). A newer pip playwright
+# looks for a browser build that isn't in the image -> launch fails.
+playwright==1.49.1
