@@ -14,7 +14,7 @@ _QUOTA = ("hard limit", "platform-feature-disabled", "monthly usage")
 def collect(channel, limit=10):
     platform = channel["platform"]
     if platform == "youtube":
-        return youtube_rss.collect(channel)
+        return youtube_rss.collect(channel, limit=limit)
     if platform == "lemon8":
         return lemon8.collect(channel, limit=limit)
     if platform in _APIFY:
