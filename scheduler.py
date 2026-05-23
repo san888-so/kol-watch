@@ -58,18 +58,15 @@ def run_once(triggered_by="manual"):
             if cid and not ch.get("channel_id_cache"):
                 db.update_channel(ch["id"], channel_id_cache=cid)
 
-            # Posts come newest -> oldest. Walk down; the first
-            # already-seen post means everything older is known too,
-            # so stop this channel right there. Pinned posts sit on top
-            # out of order, so a seen *pinned* post is skipped, not a stop.
+            # Scan every fetched post; skip ones already seen. We deliberately
+            # do NOT break at the first seen post: a pinned/old post can sit
+            # on top of the feed (esp. FB/IG/X, and apidojo TikTok which
+            # doesn't flag pinned), and breaking there would miss the newer
+            # posts below it. posts_per_check is small so scanning all is cheap.
             for p in posts:
                 pid = p.get("post_id") or ""
-                if not pid:
+                if not pid or db.post_seen(ch["id"], pid):
                     continue
-                if db.post_seen(ch["id"], pid):
-                    if p.get("pinned"):
-                        continue
-                    break
                 new_posts += 1
                 found = matcher.scan(p.get("caption", ""), p.get("hashtags", []))
                 db.mark_seen(ch["id"], pid, p.get("url", ""),

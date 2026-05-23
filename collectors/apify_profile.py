@@ -77,15 +77,25 @@ def collect(channel, limit=10):
         user = _tiktok_user(url)
         if not user:
             raise RuntimeError("cannot parse tiktok username")
+        # apidojo~tiktok-scraper: ~$0.30/1k vs clockworks ~$1.70/1k (5.6x
+        # cheaper) and returns everything we need (id/title/hashtags/postPage).
         payload = {
-            "profiles": [user], "resultsPerPage": limit,
-            "profileScrapeSections": ["videos"], "profileSorting": "latest",
-            "shouldDownloadVideos": False, "shouldDownloadCovers": False,
-            "shouldDownloadSubtitles": False, "shouldDownloadAvatars": False,
-            "shouldDownloadSlideshowImages": False,
+            "startUrls": [{"url": f"https://www.tiktok.com/@{user}"}],
+            "maxItems": limit,
         }
-        raw = prov._call_actor_sync(ACTORS["tiktok_profile"], payload)
-        return [_shape(normalize_tiktok_post(r, "apify")) for r in raw[:limit]]
+        raw = prov._call_actor_sync(ACTORS["tiktok_cheap"], payload)
+        out = []
+        for r in raw[:limit]:
+            tags = [h for h in (r.get("hashtags") or []) if h]
+            out.append({
+                "post_id": str(r.get("id") or ""),
+                "url": r.get("postPage") or url,
+                "caption": r.get("title") or "",
+                "hashtags": tags,
+                "posted_at": r.get("uploadedAtFormatted") or "",
+                "pinned": False,
+            })
+        return out
 
     if platform == "instagram":
         user = _ig_user(url)
