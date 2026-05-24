@@ -90,6 +90,11 @@ def run_once(triggered_by="manual"):
                              hashtags=p.get("hashtags", []),
                              matched=bool(found))
                 for f in found:
+                    # Skip if this post+keyword was already flagged (any
+                    # status) — no duplicate alerts, incl. ones marked
+                    # contacted/removed and Lemon8 re-detections.
+                    if db.hit_exists_for(ch["id"], f["keyword"], p.get("url", "")):
+                        continue
                     hid = db.add_hit(
                         ch["id"], ch["kol_name"], ch["platform"],
                         p.get("url", ""), pid, p.get("posted_at", ""),

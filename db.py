@@ -268,6 +268,23 @@ def list_hits(status=None):
         return [dict(r) for r in c.execute(q, args).fetchall()]
 
 
+def hit_exists_for(channel_id, matched_keyword, post_url):
+    """True if we've already recorded a hit for this same post+keyword.
+
+    Matches on post_url (stable per real post; for Lemon8 fallback it's the
+    profile URL) so a post already alerted — especially one the team marked
+    contacted/removed — is never re-alerted, even if the collector hands us
+    a different synthetic post_id next run.
+    """
+    if not post_url:
+        return False
+    with _conn() as c:
+        r = c.execute(
+            "SELECT 1 FROM hit WHERE channel_id=? AND matched_keyword=? AND post_url=? LIMIT 1",
+            (channel_id, matched_keyword, post_url)).fetchone()
+        return r is not None
+
+
 def unnotified_hits():
     with _conn() as c:
         return [dict(r) for r in c.execute(
