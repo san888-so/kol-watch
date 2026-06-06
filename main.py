@@ -125,6 +125,30 @@ def api_stop():
             else {"error": "no run in progress"}), 200
 
 
+def api_brand_backfill():
+    """Re-scan every already-collected post against the client_brands list
+    and record brand hits. Marks them notified=1 so we don't blast LINE
+    with historical posts — they just populate the report tab."""
+    import matcher
+    brand = matcher.get_client_brands()
+    if not brand:
+        return {"error": "client_brands ว่าง — ตั้งค่าก่อน"}, 400
+    added = scanned = 0
+    for r in db.all_seen_with_meta():
+        scanned += 1
+        tags = (r.get("hashtags") or "").split()
+        for f in matcher.scan(r["caption"], tags, watchlist=brand):
+            if db.hit_exists_for(r["channel_id"], f["keyword"], r["post_url"]):
+                continue
+            hid = db.add_hit(r["channel_id"], r["kol_name"], r["platform"],
+                             r["post_url"], r["post_id"], r["posted_at"],
+                             f["keyword"], f["snippet"], kind="brand")
+            if hid:
+                db.mark_notified(hid)
+                added += 1
+    return {"ok": True, "scanned": scanned, "added": added}, 200
+
+
 def api_hit_status(payload):
     hid = payload.get("id")
     status = payload.get("status")
@@ -285,6 +309,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_run()
             elif path == "/api/stop":
                 r, c = api_stop()
+            elif path == "/api/brand_backfill":
+                r, c = api_brand_backfill()
             elif path == "/api/hit_status":
                 r, c = api_hit_status(payload)
             elif path == "/api/settings":

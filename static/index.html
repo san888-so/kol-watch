@@ -52,7 +52,9 @@
 
   <div id="tabBrand" style="display:none">
     <section>
-      <h2>📊 รายงานแบรนด์ลูกค้า — จัดกลุ่มตาม KOL</h2>
+      <h2>📊 รายงานแบรนด์ลูกค้า — จัดกลุ่มตาม KOL
+        <button id="brandBackfillBtn" class="ghost" style="float:right;font-size:13px">🔍 ค้นย้อนหลังจากโพสต์ที่ดึงแล้ว</button>
+      </h2>
       <div class="muted" id="brandInfo" style="margin-bottom:8px"></div>
       <div id="brandList"></div>
       <div class="muted" id="brandEmpty" style="display:none">ยังไม่เจอโพสต์ที่พูดถึงแบรนด์ลูกค้า</div>
@@ -220,6 +222,7 @@ async function refresh(){
 $("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}`);$("#syncBtn").disabled=false;refresh();};
 $("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
 $("#stopBtn").onclick=async()=>{$("#stopBtn").disabled=true;await jpost("/api/stop",{});$("#stopBtn").disabled=false;refresh();};
+$("#brandBackfillBtn").onclick=async()=>{$("#brandBackfillBtn").disabled=true;$("#brandBackfillBtn").textContent="กำลังค้น…";const r=await jpost("/api/brand_backfill",{});$("#brandBackfillBtn").disabled=false;$("#brandBackfillBtn").textContent="🔍 ค้นย้อนหลังจากโพสต์ที่ดึงแล้ว";alert(r.error?r.error:`สแกน ${r.scanned} โพสต์ — เจอใหม่ ${r.added} รายการ`);refresh();};
 $("#saveBtn").onclick=async()=>{
   const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
     line_mode:$("#line_mode").value,

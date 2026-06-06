@@ -284,6 +284,21 @@ def list_hits(status=None, kind="competitor"):
         return [dict(r) for r in c.execute(q, args).fetchall()]
 
 
+def all_seen_with_meta():
+    """seen_post rows joined with KOL/platform — used by brand backfill."""
+    with _conn() as c:
+        rows = c.execute("""
+            SELECT sp.channel_id, sp.post_id, sp.post_url, sp.posted_at,
+                   sp.caption, sp.hashtags,
+                   k.name AS kol_name, ch.platform
+            FROM seen_post sp
+            JOIN channel ch ON ch.id = sp.channel_id
+            JOIN kol k ON k.id = ch.kol_id
+            WHERE sp.caption IS NOT NULL AND sp.caption != ''
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+
 def unnotified_brand_hits():
     """Brand hits this run not yet sent in a digest."""
     with _conn() as c:
