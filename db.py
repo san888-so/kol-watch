@@ -94,7 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_status ON hit(handle_status, detected_at);
 """
 
 DEFAULT_SETTINGS = {
-    "run_times": "08:00,16:00",
+    "run_times": "08:00,17:00",
     "auto_enabled": "1",
     "sheet_id": "",
     "watchlist": json.dumps({
@@ -108,6 +108,17 @@ DEFAULT_SETTINGS = {
     "posts_per_check": "3",
     "enable_bd_fallback": "0",
     "scan_platforms": "youtube,lemon8,tiktok,instagram,facebook,x",
+    # Brand-of-our-client report (separate from competitor alert): we scan
+    # every collected post for these terms and LINE-digest the matches at
+    # the end of each run, grouped by KOL.
+    "client_brands": json.dumps({
+        "Webull": ["webull", "วีบลู", "วีบูล", "วีบุล", "webullth", "webull th"],
+    }, ensure_ascii=False),
+    "brand_kols_per_bubble": "5",
+    # Daily DCA content-status report (separate from the keyword watch).
+    "dca_report_enabled": "1",
+    "dca_report_time": "10:00,16:00",
+    "dca_sheet_id": "1O6ls0VtoCxZHlIEsZ6J9FqJSSUuQjaPcKV_FZ6QkGgM",
 }
 
 
@@ -129,6 +140,11 @@ def init():
             c.execute("ALTER TABLE seen_post ADD COLUMN caption TEXT")
         if "hashtags" not in cols:
             c.execute("ALTER TABLE seen_post ADD COLUMN hashtags TEXT")
+        # Migration: tag every hit with a kind so we can split the
+        # competitor watch from the client-brand report.
+        hit_cols = {r["name"] for r in c.execute("PRAGMA table_info(hit)")}
+        if "kind" not in hit_cols:
+            c.execute("ALTER TABLE hit ADD COLUMN kind TEXT NOT NULL DEFAULT 'competitor'")
         for k, v in DEFAULT_SETTINGS.items():
             c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
 
@@ -242,30 +258,38 @@ def list_all_posts():
 # --- hits ---
 
 def add_hit(channel_id, kol_name, platform, post_url, post_id,
-            posted_at, matched_keyword, snippet):
+            posted_at, matched_keyword, snippet, kind="competitor"):
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _conn() as c:
         try:
             cur = c.execute("""INSERT INTO hit
                 (channel_id,kol_name,platform,post_url,post_id,posted_at,
-                 matched_keyword,snippet,detected_at)
-                VALUES(?,?,?,?,?,?,?,?,?)""",
+                 matched_keyword,snippet,detected_at,kind)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (channel_id, kol_name, platform, post_url, post_id,
-                 posted_at, matched_keyword, snippet, now))
+                 posted_at, matched_keyword, snippet, now, kind))
             return cur.lastrowid
         except sqlite3.IntegrityError:
             return None  # already recorded
 
 
-def list_hits(status=None):
+def list_hits(status=None, kind="competitor"):
     with _conn() as c:
-        q = "SELECT * FROM hit"
-        args = ()
+        q = "SELECT * FROM hit WHERE kind=?"
+        args = [kind]
         if status:
-            q += " WHERE handle_status=?"
-            args = (status,)
+            q += " AND handle_status=?"
+            args.append(status)
         q += " ORDER BY detected_at DESC LIMIT 1000"
         return [dict(r) for r in c.execute(q, args).fetchall()]
+
+
+def unnotified_brand_hits():
+    """Brand hits this run not yet sent in a digest."""
+    with _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM hit WHERE kind='brand' AND notified=0 "
+            "ORDER BY kol_name, detected_at ASC").fetchall()]
 
 
 def hit_exists_for(channel_id, matched_keyword, post_url):

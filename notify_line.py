@@ -58,3 +58,14 @@ def push_hit(hit):
 
 def digest(lines):
     return _send([{"type": "text", "text": "\n".join(lines)[:4900]}])
+
+
+def send_texts(texts):
+    """Send several text bubbles, batching across LINE requests (5 msg/req cap)."""
+    ok_all, last = True, "no messages"
+    for i in range(0, len(texts), 5):
+        batch = texts[i:i + 5]
+        ok, msg = _send([{"type": "text", "text": t[:4900]} for t in batch])
+        ok_all = ok_all and ok
+        last = msg
+    return ok_all, last

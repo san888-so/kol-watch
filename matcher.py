@@ -30,6 +30,15 @@ def get_watchlist():
         return {}
 
 
+def get_client_brands():
+    """Brands belonging to *our client* — surfaced in a separate report tab
+    (not a competitor alert). Default Webull/วีบลู; editable in Settings."""
+    try:
+        return json.loads(db.get_setting("client_brands", "{}"))
+    except Exception:
+        return {}
+
+
 def _variant_hits(text, text_nospace, variant):
     """Return True if a normalized variant appears in the text.
 
@@ -47,15 +56,20 @@ def _variant_hits(text, text_nospace, variant):
     return bool(pat.search(text) or pat.search(text_nospace))
 
 
-def scan(caption, hashtags):
-    """Return list of {keyword, variant, snippet} for every watchlist hit."""
+def scan(caption, hashtags, watchlist=None):
+    """Return list of {keyword, variant, snippet} for every watchlist hit.
+
+    `watchlist` defaults to the competitor watchlist. Pass a different dict
+    to scan against another list (e.g. get_client_brands())."""
+    if watchlist is None:
+        watchlist = get_watchlist()
     parts = [caption or ""]
     parts += [("#" + h) for h in (hashtags or [])]
     raw = "  ".join(parts)
     text = _norm(raw)
     text_nospace = text.replace(" ", "")
     hits = []
-    for keyword, variants in get_watchlist().items():
+    for keyword, variants in watchlist.items():
         for variant in ([keyword] + list(variants)):
             if _variant_hits(text, text_nospace, variant):
                 hits.append({

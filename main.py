@@ -74,7 +74,8 @@ def api_state():
             "by_platform": dict(by_plat),
             "blocked": len(blocked),
         },
-        "hits": db.list_hits(),
+        "hits": db.list_hits(kind="competitor"),
+        "brand_hits": db.list_hits(kind="brand"),
         "unresolved": db.list_unresolved(),
         "line_sources": db.list_line_sources(),
         "blocked": [{"kol": c["kol_name"], "platform": c["platform"],
@@ -92,6 +93,8 @@ def api_state():
             "enable_bd_fallback": db.get_setting("enable_bd_fallback", "0"),
             "scan_platforms": db.get_setting("scan_platforms",
                 "youtube,lemon8,tiktok,instagram,facebook,x"),
+            "client_brands": db.get_setting("client_brands", "{}"),
+            "brand_kols_per_bubble": db.get_setting("brand_kols_per_bubble", "5"),
             "watchlist": db.get_setting("watchlist", "{}"),
         },
     }
@@ -134,7 +137,9 @@ def api_hit_status(payload):
 def api_settings(payload):
     for k in ("run_times", "auto_enabled", "sheet_id", "line_to",
               "line_mode", "posts_per_check", "watchlist",
-              "enable_bd_fallback", "scan_platforms"):
+              "enable_bd_fallback", "scan_platforms",
+              "client_brands", "brand_kols_per_bubble",
+              "dca_report_enabled", "dca_report_time", "dca_sheet_id"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):

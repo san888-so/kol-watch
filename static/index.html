@@ -46,7 +46,17 @@
 
   <div style="display:flex;gap:8px;margin-bottom:14px">
     <button id="tabWatchBtn">🛡️ เฝ้าระวัง</button>
+    <button id="tabBrandBtn" class="ghost">📊 รายงานลูกค้า</button>
     <button id="tabPostsBtn" class="ghost">📰 โพสต์ทั้งหมด</button>
+  </div>
+
+  <div id="tabBrand" style="display:none">
+    <section>
+      <h2>📊 รายงานแบรนด์ลูกค้า — จัดกลุ่มตาม KOL</h2>
+      <div class="muted" id="brandInfo" style="margin-bottom:8px"></div>
+      <div id="brandList"></div>
+      <div class="muted" id="brandEmpty" style="display:none">ยังไม่เจอโพสต์ที่พูดถึงแบรนด์ลูกค้า</div>
+    </section>
   </div>
 
   <div id="tabPosts" style="display:none">
@@ -105,8 +115,12 @@
       <div><label>แพลตฟอร์มที่สแกน (คั่นด้วย , — ตัด facebook ออกลดค่าใช้จ่าย ~80%)</label><input id="scan_platforms"></div>
       <div><label>ใช้ Brightdata เป็น fallback เมื่อ Apify หมด (1/0 — แนะนำ 0 กันเงินไหล)</label><input id="enable_bd_fallback"></div>
     </div>
-    <label>Watchlist (JSON: {"คำหลัก":["variant",...]})</label>
+    <label>Watchlist คู่แข่ง (JSON: {"คำหลัก":["variant",...]})</label>
     <textarea id="watchlist" rows="5"></textarea>
+    <label>แบรนด์ลูกค้าที่จะ Report (JSON: {"Webull":["webull","วีบลู",...]})</label>
+    <textarea id="client_brands" rows="3"></textarea>
+    <label>จำนวน KOL ต่อบับเบิล LINE (รายงานแบรนด์)</label>
+    <input id="brand_kols_per_bubble">
     <div style="margin-top:12px"><button id="saveBtn">บันทึกการตั้งค่า</button></div>
   </section>
   </div>
@@ -174,9 +188,26 @@ async function refresh(){
     $("#line_to").value=s.line_to;$("#line_mode").value=s.line_mode||"broadcast";$("#posts_per_check").value=s.posts_per_check;
     $("#auto_enabled").value=s.auto_enabled;
     $("#scan_platforms").value=s.scan_platforms||"";$("#enable_bd_fallback").value=s.enable_bd_fallback||"0";
+    try{$("#client_brands").value=JSON.stringify(JSON.parse(s.client_brands||"{}"),null,2);}catch(e){$("#client_brands").value=s.client_brands||"";}
+    $("#brand_kols_per_bubble").value=s.brand_kols_per_bubble||"5";
     try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
     $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
   }
+  // brand-report list — grouped by KOL
+  const bh=d.brand_hits||[];
+  $("#brandEmpty").style.display=bh.length?"none":"block";
+  $("#brandInfo").textContent=bh.length?`เจอ ${bh.length} โพสต์ จาก ${new Set(bh.map(h=>h.kol_name)).size} KOL`:"";
+  const groups={}; for(const h of bh){(groups[h.kol_name]=groups[h.kol_name]||[]).push(h);}
+  $("#brandList").innerHTML=Object.entries(groups).map(([kol,arr],i)=>`
+    <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-weight:600">${i+1}. ${esc(kol)}</div>
+      ${arr.map(h=>`<div style="margin:6px 0 0 14px;font-size:13px">
+         <span class="badge">${esc(h.matched_keyword)}</span>
+         <span class="muted">${esc(h.platform)} · ${esc(fmtTH(h.posted_at,true))}</span><br>
+         <a href="${esc(h.post_url)}" target="_blank" style="font-size:12px">${esc(h.post_url).slice(0,80)}</a>
+       </div>`).join("")}
+    </div>`).join("");
+
   const ls=$("#lineSources");
   if(!d.line_sources.length){
     ls.innerHTML='ยังไม่มี id ที่จับได้ — ตั้ง Webhook URL = <code>/webhook</code> ใน LINE Developers แล้วพิมพ์ในกลุ่ม';
@@ -193,7 +224,8 @@ $("#saveBtn").onclick=async()=>{
   const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
     line_mode:$("#line_mode").value,
     posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value,
-    scan_platforms:$("#scan_platforms").value,enable_bd_fallback:$("#enable_bd_fallback").value};
+    scan_platforms:$("#scan_platforms").value,enable_bd_fallback:$("#enable_bd_fallback").value,
+    client_brands:$("#client_brands").value,brand_kols_per_bubble:$("#brand_kols_per_bubble").value};
   if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();
   const r=await jpost("/api/settings",b);alert(r.error?r.error:"บันทึกแล้ว");$("#line_token").value="";refresh();
 };
@@ -201,12 +233,15 @@ let curTab="watch";
 function showTab(t){
   curTab=t;
   $("#tabWatch").style.display=t==="watch"?"block":"none";
+  $("#tabBrand").style.display=t==="brand"?"block":"none";
   $("#tabPosts").style.display=t==="posts"?"block":"none";
   $("#tabWatchBtn").className=t==="watch"?"":"ghost";
+  $("#tabBrandBtn").className=t==="brand"?"":"ghost";
   $("#tabPostsBtn").className=t==="posts"?"":"ghost";
   if(t==="posts")loadPosts();
 }
 $("#tabWatchBtn").onclick=()=>showTab("watch");
+$("#tabBrandBtn").onclick=()=>showTab("brand");
 $("#tabPostsBtn").onclick=()=>showTab("posts");
 
 async function loadPosts(){

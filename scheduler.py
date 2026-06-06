@@ -6,6 +6,7 @@ keyword scan -> on hit: record + immediate LINE push. End of run: digest.
 """
 import threading
 import traceback
+from collections import OrderedDict
 from datetime import datetime, timezone
 try:
     from zoneinfo import ZoneInfo
@@ -18,6 +19,7 @@ import db
 import matcher
 import notify_line
 import collectors
+import dca_report
 
 PROGRESS = {"running": False, "current": "", "done": 0, "total": 0,
             "last_run": None, "summary": ""}
@@ -31,6 +33,72 @@ def request_stop():
         _STOP.set()
         return True
     return False
+
+
+# LINE text bubble cap = 5000 chars; leave headroom for the rejoin header.
+_BUBBLE_CHAR_CAP = 4500
+
+
+def _post_time_th(s):
+    """Render a post's posted_at string as 'HH:MM น. DD/MM' in Bangkok time.
+    Empty / date-only -> the date as-is."""
+    if not s:
+        return "—"
+    if len(s) == 10 and s.count("-") == 2:  # YYYY-MM-DD only
+        return s
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(TH_TZ).strftime("%H:%M น. %d/%m")
+    except Exception:
+        return s[:16]
+
+
+def _build_brand_bubbles(hits):
+    """Group brand-hits by KOL and pack into LINE bubbles (text bubbles cap
+    ~5000 chars; we use 4500). Each bubble carries N KOLs (user-configured),
+    auto-splitting earlier if a bubble would exceed the char cap."""
+    try:
+        kols_per_bubble = max(1, int(db.get_setting("brand_kols_per_bubble", "5")))
+    except ValueError:
+        kols_per_bubble = 5
+    stamp = datetime.now(TH_TZ).strftime("%d/%m %H:%M")
+
+    by_kol = OrderedDict()
+    for h in hits:
+        by_kol.setdefault(h["kol_name"], []).append(h)
+
+    def head(n, total):
+        return (f"📊 รายงานแบรนด์ลูกค้า — {stamp} (GMT+7)\n"
+                f"เจอ {total} โพสต์ จาก {len(by_kol)} KOL"
+                + (f"  (ส่วน {n})" if n > 1 else "")
+                + "\n────────\n")
+
+    bubbles, part = [], 1
+    body, packed = "", 0
+    total_hits = len(hits)
+    idx = 0
+    for kol, entries in by_kol.items():
+        idx += 1
+        block = f"\n{idx}. {kol}\n"
+        for e in entries:
+            block += (f"   • [{e['matched_keyword']}] {e['platform']} "
+                      f"{_post_time_th(e.get('posted_at',''))}\n"
+                      f"     {e['post_url']}\n")
+        first = (packed == 0)
+        prospective = (head(part, total_hits) if first else "") + body + block
+        if (not first and (packed >= kols_per_bubble
+                           or len(prospective) > _BUBBLE_CHAR_CAP)):
+            bubbles.append(head(part, total_hits) + body)
+            part += 1
+            body, packed = block, 1
+        else:
+            body += block
+            packed += 1
+    if body:
+        bubbles.append(head(part, total_hits) + body)
+    return bubbles
 
 
 def run_once(triggered_by="manual"):
@@ -53,6 +121,7 @@ def run_once(triggered_by="manual"):
         limit = 3
 
     new_posts = hits = blocked = 0
+    brand_wl = matcher.get_client_brands()
     try:
         for ch in channels:
             if _STOP.is_set():
@@ -98,7 +167,7 @@ def run_once(triggered_by="manual"):
                     hid = db.add_hit(
                         ch["id"], ch["kol_name"], ch["platform"],
                         p.get("url", ""), pid, p.get("posted_at", ""),
-                        f["keyword"], f["snippet"])
+                        f["keyword"], f["snippet"], kind="competitor")
                     if hid:
                         hits += 1
                         row = {"kol_name": ch["kol_name"],
@@ -110,9 +179,35 @@ def run_once(triggered_by="manual"):
                         if ok:
                             db.mark_notified(hid)
 
+                # ---- Client-brand report (no immediate push; batched at end) ----
+                if brand_wl:
+                    bf = matcher.scan(p.get("caption", ""),
+                                      p.get("hashtags", []),
+                                      watchlist=brand_wl)
+                    for f in bf:
+                        if db.hit_exists_for(ch["id"], f["keyword"],
+                                             p.get("url", "")):
+                            continue
+                        db.add_hit(ch["id"], ch["kol_name"], ch["platform"],
+                                   p.get("url", ""), pid,
+                                   p.get("posted_at", ""),
+                                   f["keyword"], f["snippet"],
+                                   kind="brand")
+
             db.update_channel(ch["id"], status="ok", last_error="",
                               last_checked=datetime.now(timezone.utc).isoformat())
             PROGRESS["done"] += 1
+
+        # ---- Brand report digest (batched, grouped by KOL) ----
+        brand_pending = db.unnotified_brand_hits()
+        brand_sent = 0
+        if brand_pending and not stopped:
+            bubbles = _build_brand_bubbles(brand_pending)
+            ok, _ = notify_line.send_texts(bubbles)
+            if ok:
+                for h in brand_pending:
+                    db.mark_notified(h["id"])
+                brand_sent = len(brand_pending)
 
         stamp = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
         unresolved = len(db.list_unresolved())
@@ -123,6 +218,7 @@ def run_once(triggered_by="manual"):
             f"ช่องที่สแกน: {scanned}\n"
             f"โพสต์ใหม่: {new_posts}\n"
             f"⚠️ เจอคำคู่แข่ง: {hits}\n"
+            f"📊 รายงานแบรนด์ลูกค้า: {brand_sent}\n"
             f"❌ เช็กไม่ได้ (private/บล็อก): {blocked}\n"
             f"🔗 ลิงก์ใน Sheet ที่อ่านไม่ออก: {unresolved}"
         )
@@ -144,25 +240,49 @@ def scheduler_thread(stop_event):
     the container's OS TZ is UTC, Bangkok, or anything else.
     """
     last_fired = {}  # "HH:MM" -> date string (in Bangkok)
+    report_fired = {}  # "HH:MM" -> date string (in Bangkok)
     while not stop_event.is_set():
         try:
+            now = datetime.now(TH_TZ)
+            today = now.strftime("%Y-%m-%d")
+
+            def _due(hhmm, fired, window=600):
+                try:
+                    target = datetime.strptime(
+                        f"{today} {hhmm}", "%Y-%m-%d %H:%M"
+                    ).replace(tzinfo=TH_TZ)
+                except ValueError:
+                    return False
+                return (fired.get(hhmm) != today and now >= target
+                        and (now - target).total_seconds() < window)
+
             if (db.get_setting("auto_enabled", "1") or "1") == "1":
                 times = [t.strip() for t in
                          (db.get_setting("run_times", "08:00,16:00") or "").split(",")
                          if t.strip()]
-                now = datetime.now(TH_TZ)
-                today = now.strftime("%Y-%m-%d")
                 for hhmm in times:
-                    try:
-                        target = datetime.strptime(
-                            f"{today} {hhmm}", "%Y-%m-%d %H:%M"
-                        ).replace(tzinfo=TH_TZ)
-                    except ValueError:
-                        continue
-                    if (last_fired.get(hhmm) != today and now >= target
-                            and (now - target).total_seconds() < 600):
+                    if _due(hhmm, last_fired):
                         last_fired[hhmm] = today
                         run_once(triggered_by=f"auto {hhmm} TH")
+
+            # Daily DCA content-status report (independent of the keyword watch).
+            # Uses a 1-hour catch-up window so a brief restart near the target
+            # time doesn't skip the day — last_fired guards against duplicates.
+            if (db.get_setting("dca_report_enabled", "1") or "1") == "1":
+                report_times = [t.strip() for t in
+                                (db.get_setting("dca_report_time", "10:00,16:00")
+                                 or "10:00,16:00").split(",") if t.strip()]
+                for rt in report_times:
+                    if _due(rt, report_fired, window=3600):
+                        report_fired[rt] = today
+                        print(f"[dca_report] firing for {rt} TH", flush=True)
+                        try:
+                            ok, msg = dca_report.send_report()
+                            print(f"[dca_report] {rt} result ok={ok} msg={msg}",
+                                  flush=True)
+                        except Exception:
+                            print(f"[dca_report] {rt} EXCEPTION:", flush=True)
+                            traceback.print_exc()
         except Exception:
             traceback.print_exc()
         stop_event.wait(30)
