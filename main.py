@@ -125,6 +125,17 @@ def api_stop():
             else {"error": "no run in progress"}), 200
 
 
+def api_health_check():
+    if scheduler.HEALTH["running"]:
+        return {"error": "health-check already running"}, 409
+    threading.Thread(target=scheduler.run_health_check, daemon=True).start()
+    return {"ok": True}, 200
+
+
+def api_health_status():
+    return scheduler.HEALTH, 200
+
+
 def api_brand_backfill():
     """Re-scan every already-collected post against the client_brands list
     and record brand hits. Marks them notified=1 so we don't blast LINE
@@ -227,6 +238,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, api_state())
             elif path == "/api/posts":
                 self._json(200, {"posts": db.list_all_posts()})
+            elif path == "/api/health_check":
+                self._json(200, scheduler.HEALTH)
             elif path == "/api/posts.csv":
                 self._send_csv()
             else:
@@ -311,6 +324,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_stop()
             elif path == "/api/brand_backfill":
                 r, c = api_brand_backfill()
+            elif path == "/api/health_check":
+                r, c = api_health_check()
             elif path == "/api/hit_status":
                 r, c = api_hit_status(payload)
             elif path == "/api/settings":

@@ -35,6 +35,39 @@ def request_stop():
     return False
 
 
+# Cheap health-check: probe every channel with limit=1, record pass/empty/error
+# per channel without writing seen_post/hit. Used to find Sheet links that
+# error or return no posts (dead URLs, private accounts, broken handles).
+HEALTH = {"running": False, "done": 0, "total": 0, "results": []}
+
+
+def run_health_check():
+    if HEALTH["running"]:
+        return
+    HEALTH.update(running=True, done=0, total=0, results=[])
+    channels = db.list_channels()
+    HEALTH["total"] = len(channels)
+    try:
+        for ch in channels:
+            try:
+                posts = collectors.collect(ch, limit=1)
+                n = len(posts)
+                HEALTH["results"].append({
+                    "kol": ch["kol_name"], "platform": ch["platform"],
+                    "url": ch["profile_url"],
+                    "status": "ok" if n > 0 else "empty",
+                    "count": n, "error": ""})
+            except Exception as e:
+                HEALTH["results"].append({
+                    "kol": ch["kol_name"], "platform": ch["platform"],
+                    "url": ch["profile_url"],
+                    "status": "error", "count": 0,
+                    "error": str(e)[:200]})
+            HEALTH["done"] += 1
+    finally:
+        HEALTH["running"] = False
+
+
 # LINE text bubble cap = 5000 chars; leave headroom for the rejoin header.
 _BUBBLE_CHAR_CAP = 4500
 
