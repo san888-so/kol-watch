@@ -95,6 +95,7 @@ def api_state():
                 "youtube,lemon8,tiktok,instagram,facebook,x"),
             "client_brands": db.get_setting("client_brands", "{}"),
             "brand_kols_per_bubble": db.get_setting("brand_kols_per_bubble", "5"),
+            "brand_digest_max_age_days": db.get_setting("brand_digest_max_age_days", "3"),
             "watchlist": db.get_setting("watchlist", "{}"),
         },
     }
@@ -195,6 +196,7 @@ def api_settings(payload):
               "line_mode", "posts_per_check", "watchlist",
               "enable_bd_fallback", "scan_platforms",
               "client_brands", "brand_kols_per_bubble",
+              "brand_digest_max_age_days",
               "dca_report_enabled", "dca_report_time", "dca_sheet_id"):
         if k in payload:
             db.set_setting(k, payload[k])

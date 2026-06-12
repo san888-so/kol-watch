@@ -115,6 +115,11 @@ DEFAULT_SETTINGS = {
         "Webull": ["webull", "วีบลู", "วีบูล", "วีบุล", "webullth", "webull th"],
     }, ensure_ascii=False),
     "brand_kols_per_bubble": "5",
+    # Brand digest only LINE-alerts posts dated within this many days.
+    # Older "rediscoveries" (Apify returning an old post with a slightly
+    # different URL form -> new post_id) are silently archived without
+    # spamming the team.
+    "brand_digest_max_age_days": "3",
     # Daily DCA content-status report (separate from the keyword watch).
     "dca_report_enabled": "1",
     "dca_report_time": "10:00,16:00",

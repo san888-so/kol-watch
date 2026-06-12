@@ -7,7 +7,7 @@ keyword scan -> on hit: record + immediate LINE push. End of run: digest.
 import threading
 import traceback
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
     TH_TZ = ZoneInfo("Asia/Bangkok")
@@ -233,15 +233,34 @@ def run_once(triggered_by="manual"):
             PROGRESS["done"] += 1
 
         # ---- Brand report digest (batched, grouped by KOL) ----
+        # Only LINE-alert posts dated within the recency window — Apify
+        # occasionally returns the same old post with a different URL form,
+        # which we register as a new hit because we can't dedupe it without
+        # the canonical post_id. Silently archive those older "rediscoveries".
         brand_pending = db.unnotified_brand_hits()
+        try:
+            max_age_days = int(db.get_setting("brand_digest_max_age_days", "3"))
+        except ValueError:
+            max_age_days = 3
+        cutoff_date = (datetime.now(TH_TZ) - timedelta(days=max_age_days)).date()
+        fresh, stale = [], []
+        for h in brand_pending:
+            pa = (h.get("posted_at") or "")[:10]
+            try:
+                d = datetime.strptime(pa, "%Y-%m-%d").date()
+            except ValueError:
+                d = None
+            (fresh if (d is None or d >= cutoff_date) else stale).append(h)
+        for h in stale:           # archive without LINE
+            db.mark_notified(h["id"])
         brand_sent = 0
-        if brand_pending and not stopped:
-            bubbles = _build_brand_bubbles(brand_pending)
+        if fresh and not stopped:
+            bubbles = _build_brand_bubbles(fresh)
             ok, _ = notify_line.send_texts(bubbles)
             if ok:
-                for h in brand_pending:
+                for h in fresh:
                     db.mark_notified(h["id"])
-                brand_sent = len(brand_pending)
+                brand_sent = len(fresh)
 
         stamp = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
         unresolved = len(db.list_unresolved())
