@@ -307,21 +307,27 @@ def unnotified_brand_hits():
             "ORDER BY kol_name, detected_at ASC").fetchall()]
 
 
-def hit_exists_for(channel_id, matched_keyword, post_url):
+def hit_exists_for(channel_id, matched_keyword, post_url, post_id=None):
     """True if we've already recorded a hit for this same post+keyword.
 
-    Matches on post_url (stable per real post; for Lemon8 fallback it's the
-    profile URL) so a post already alerted — especially one the team marked
-    contacted/removed — is never re-alerted, even if the collector hands us
-    a different synthetic post_id next run.
-    """
-    if not post_url:
+    Match on post_id OR post_url so we dedupe against either kind of
+    instability: Lemon8 fallback gives a synthetic post_id that mutates
+    while the URL stays the same (the profile URL), and Apify Facebook
+    sometimes returns a different URL form across runs (permalink vs
+    /posts/, tracking params) while the post_id we derived from pfbid
+    stays the same."""
+    if not post_url and not post_id:
         return False
     with _conn() as c:
-        r = c.execute(
-            "SELECT 1 FROM hit WHERE channel_id=? AND matched_keyword=? AND post_url=? LIMIT 1",
-            (channel_id, matched_keyword, post_url)).fetchone()
-        return r is not None
+        q = "SELECT 1 FROM hit WHERE channel_id=? AND matched_keyword=? AND ("
+        args = [channel_id, matched_keyword]
+        clauses = []
+        if post_url:
+            clauses.append("post_url=?"); args.append(post_url)
+        if post_id:
+            clauses.append("post_id=?"); args.append(post_id)
+        q += " OR ".join(clauses) + ") LIMIT 1"
+        return c.execute(q, args).fetchone() is not None
 
 
 def unnotified_hits():

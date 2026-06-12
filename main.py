@@ -125,6 +125,26 @@ def api_stop():
             else {"error": "no run in progress"}), 200
 
 
+def api_dedupe_hits():
+    """Collapse duplicate hit rows (same channel+keyword+post_id) that were
+    created before the dedup fix when Apify returned a slightly different URL
+    each scan. Keeps the oldest row per group."""
+    import sqlite3
+    with db._lock, db._conn() as c:
+        before = c.execute("SELECT COUNT(*) FROM hit").fetchone()[0]
+        c.execute("""
+            DELETE FROM hit
+            WHERE id NOT IN (
+              SELECT MIN(id) FROM hit
+              WHERE post_id IS NOT NULL AND post_id != ''
+              GROUP BY channel_id, matched_keyword, post_id
+            ) AND post_id IS NOT NULL AND post_id != ''
+        """)
+        after = c.execute("SELECT COUNT(*) FROM hit").fetchone()[0]
+    return {"ok": True, "before": before, "after": after,
+            "removed": before - after}, 200
+
+
 def api_health_check():
     if scheduler.HEALTH["running"]:
         return {"error": "health-check already running"}, 409
@@ -149,7 +169,8 @@ def api_brand_backfill():
         scanned += 1
         tags = (r.get("hashtags") or "").split()
         for f in matcher.scan(r["caption"], tags, watchlist=brand):
-            if db.hit_exists_for(r["channel_id"], f["keyword"], r["post_url"]):
+            if db.hit_exists_for(r["channel_id"], f["keyword"],
+                                 r["post_url"], r["post_id"]):
                 continue
             hid = db.add_hit(r["channel_id"], r["kol_name"], r["platform"],
                              r["post_url"], r["post_id"], r["posted_at"],
@@ -326,6 +347,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_brand_backfill()
             elif path == "/api/health_check":
                 r, c = api_health_check()
+            elif path == "/api/dedupe_hits":
+                r, c = api_dedupe_hits()
             elif path == "/api/hit_status":
                 r, c = api_hit_status(payload)
             elif path == "/api/settings":
