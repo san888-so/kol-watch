@@ -267,17 +267,18 @@ def run_once(triggered_by="manual"):
                 brand_sent = len(fresh)
 
         stamp = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
-        unresolved = len(db.list_unresolved())
         head = "🛑 หยุดโดยผู้ใช้" if stopped else "📋 KOL Watch"
         scanned = f"{PROGRESS['done']}/{len(channels)}" if stopped else str(len(channels))
+        total_kols = len({c["kol_name"] for c in channels})
+        brand_label = " / ".join(brand_wl.keys()) or "แบรนด์ลูกค้า"
         summary = (
             f"{head} — รอบ {stamp} ({triggered_by})\n"
             f"ช่องที่สแกน: {scanned}\n"
+            f"จากทั้งหมด KOL: {total_kols}\n"
             f"โพสต์ใหม่: {new_posts}\n"
             f"⚠️ เจอคำคู่แข่ง: {hits}\n"
-            f"📊 รายงานแบรนด์ลูกค้า: {brand_sent}\n"
-            f"❌ เช็กไม่ได้ (private/บล็อก): {blocked}\n"
-            f"🔗 ลิงก์ใน Sheet ที่อ่านไม่ออก: {unresolved}"
+            f"📊 เจอโพส {brand_label}: {brand_sent}  (เฉพาะโพสต์ลงภายใน {max_age_days} วัน)\n"
+            f"❌ เช็กไม่ได้: {blocked}"
         )
         PROGRESS["summary"] = summary
         if not stopped:  # don't LINE-spam a digest on a manual stop
