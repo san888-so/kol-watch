@@ -86,6 +86,7 @@ def api_state():
             "run_times": db.get_setting("run_times", "08:00,16:00"),
             "auto_enabled": db.get_setting("auto_enabled", "1"),
             "sheet_id": db.get_setting("sheet_id", ""),
+            "sheet_gid": db.get_setting("sheet_gid", "401523688"),
             "line_token_set": bool(db.get_setting("line_token", "")),
             "line_to": db.get_setting("line_to", ""),
             "line_mode": db.get_setting("line_mode", "broadcast"),
@@ -192,7 +193,7 @@ def api_hit_status(payload):
 
 
 def api_settings(payload):
-    for k in ("run_times", "auto_enabled", "sheet_id", "line_to",
+    for k in ("run_times", "auto_enabled", "sheet_id", "sheet_gid", "line_to",
               "line_mode", "posts_per_check", "watchlist",
               "enable_bd_fallback", "scan_platforms",
               "client_brands", "brand_kols_per_bubble",

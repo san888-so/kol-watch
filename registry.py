@@ -1,9 +1,18 @@
 """Parse the KOL Google Sheet -> kol + channel rows.
 
-Sheet layout (0-based columns), header on row 0, data from row 1.
-Header row has 5 leading blank columns, so platform columns start at 5:
-  1 KOL name  2 Tier  3 Exclusivity  4 (primary link, ignored)
-  5 Facebook  6 Youtube  7 Tiktok  8 X  9 IG  10 Lemon8
+"All" tab layout (0-based columns), header on row 0, data from row 1:
+  0 Name  1 Tier  2 Exclusive  3 E-Mail  4 CTA Link  5 Remark
+  6 Main Platform  7 Ploy Recheck  8 All Check
+  9 TT Check  10 Tiktok Link
+  11 FB Check  12 Facebook Link
+  13 YT Check  14 Youtube Link
+  15 X Check   16 X Link
+  17 IG Check  18 IG Link
+  19 Lemon8 Check  20 Lemon8 Link
+
+The Exclusive column value drives competitor-scan eligibility:
+  "Exclusive (All Compet)"   -> scan for competitors AND brand
+  "Non - Exclusive"          -> scan for brand only
 """
 import os
 import sys
@@ -15,16 +24,16 @@ import gsync  # noqa: E402  (vendored: public-CSV reader)
 
 import db  # noqa: E402
 
-COL_NAME = 1
-COL_TIER = 2
-COL_EXCL = 3
+COL_NAME = 0
+COL_TIER = 1
+COL_EXCL = 2
 PLATFORM_COLS = {
-    "facebook": 5,
-    "youtube": 6,
-    "tiktok": 7,
-    "x": 8,
-    "instagram": 9,
-    "lemon8": 10,
+    "tiktok": 10,
+    "facebook": 12,
+    "youtube": 14,
+    "x": 16,
+    "instagram": 18,
+    "lemon8": 20,
 }
 
 # A value is a usable profile URL only if it is http(s) and the host looks right.
@@ -66,14 +75,15 @@ def _host_ok(platform, url):
     return any(h in u for h in PLATFORM_HOST[platform])
 
 
-def sync_from_sheet(sheet_id):
+def sync_from_sheet(sheet_id, gid=None):
     """Read sheet -> merge into kol/channel (non-destructive).
 
     Existing channels keep their incremental cursor (last_seen_post_id)
     so a re-sync never triggers a full re-fetch. Only the unresolved
     report is rebuilt. Returns a summary with new vs existing counts.
     """
-    rows = gsync.read_csv(sheet_id)
+    gid = gid or db.get_setting("sheet_gid", "401523688") or "0"
+    rows = gsync.read_csv(sheet_id, gid=gid)
     db.clear_unresolved()
 
     existing = {(c["kol_id"], c["platform"], c["profile_url"])

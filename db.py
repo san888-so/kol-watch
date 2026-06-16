@@ -97,6 +97,8 @@ DEFAULT_SETTINGS = {
     "run_times": "08:00,17:00",
     "auto_enabled": "1",
     "sheet_id": "",
+    # gid of the "All" tab — Exclusive + Non-Exclusive KOLs in one sheet
+    "sheet_gid": "401523688",
     "watchlist": json.dumps({
         "Moomoo": ["moomoo", "moo moo", "m00moo", "mo0moo", "มูมู่", "มู่มู่", "มูม", "หมูหมู"],
         "Dime": ["dime", "ไดม์", "ไดมส์", "d1me"],
@@ -196,7 +198,8 @@ def upsert_channel(kol_id, platform, profile_url):
 def list_channels(active_only=True):
     with _conn() as c:
         rows = c.execute("""
-            SELECT ch.*, k.name AS kol_name, k.tier AS kol_tier
+            SELECT ch.*, k.name AS kol_name, k.tier AS kol_tier,
+                   k.exclusivity AS kol_exclusivity
             FROM channel ch JOIN kol k ON k.id = ch.kol_id
             ORDER BY k.name, ch.platform
         """).fetchall()

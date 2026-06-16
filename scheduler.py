@@ -180,12 +180,16 @@ def run_once(triggered_by="manual"):
             # on top of the feed (esp. FB/IG/X, and apidojo TikTok which
             # doesn't flag pinned), and breaking there would miss the newer
             # posts below it. posts_per_check is small so scanning all is cheap.
+            # Competitor scan only applies to Exclusive KOLs (per contract).
+            # Brand (client) scan applies to everyone.
+            is_excl = "non" not in (ch.get("kol_exclusivity") or "").lower()
             for p in posts:
                 pid = p.get("post_id") or ""
                 if not pid or db.post_seen(ch["id"], pid):
                     continue
                 new_posts += 1
-                found = matcher.scan(p.get("caption", ""), p.get("hashtags", []))
+                found = matcher.scan(p.get("caption", ""),
+                                     p.get("hashtags", [])) if is_excl else []
                 db.mark_seen(ch["id"], pid, p.get("url", ""),
                              p.get("posted_at", ""),
                              caption=p.get("caption", ""),
