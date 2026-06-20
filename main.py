@@ -88,6 +88,8 @@ def api_state():
             "sheet_id": db.get_setting("sheet_id", ""),
             "sheet_gid": db.get_setting("sheet_gid", "401523688"),
             "line_token_set": bool(db.get_setting("line_token", "")),
+            "line_last_error": db.get_setting("line_last_error", ""),
+            "line_token_minted_at": db.get_setting("line_token_minted_at", ""),
             "line_to": db.get_setting("line_to", ""),
             "line_mode": db.get_setting("line_mode", "broadcast"),
             "posts_per_check": db.get_setting("posts_per_check", "3"),

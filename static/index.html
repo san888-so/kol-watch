@@ -41,6 +41,7 @@
   <span id="status" class="muted"></span>
   <a href="/logout" style="margin-left:auto;color:#94a3b8;font-size:13px">ออกจากระบบ</a>
 </header>
+<div id="lineErr" style="display:none;background:#7f1d1d;color:#fee2e2;padding:10px 24px;font-size:13px"></div>
 <div class="wrap">
   <div class="cards" id="cards"></div>
 
@@ -154,6 +155,9 @@ async function refresh(){
    <div class="card"><div class="l">แยกแพลตฟอร์ม</div><div class="muted">${Object.entries(c.by_platform).map(([k,v])=>k+":"+v).join("  ")}</div></div>`;
   const pr=d.progress;
   $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+fmtTH(pr.last_run)+" น. (GMT+7)"):"");
+  const le=d.settings.line_last_error||"";
+  if(le){$("#lineErr").style.display="block";$("#lineErr").innerHTML=`⚠️ LINE ส่งล้มเหลวล่าสุด: ${esc(le)} — token จะ auto-mint ใหม่อัตโนมัติรอบหน้า`;}
+  else $("#lineErr").style.display="none";
   $("#runBtn").disabled=pr.running;
   $("#runBtn").style.display=pr.running?"none":"";
   $("#stopBtn").style.display=pr.running?"":"none";

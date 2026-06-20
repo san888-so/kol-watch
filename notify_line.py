@@ -8,17 +8,75 @@ Delivery mode is the `line_mode` setting:
 push_hit() -> a per-hit alert; digest() -> end-of-run summary.
 """
 import json
+import os
+import time
+import threading
+from datetime import datetime, timezone
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import db
 
 _PUSH = "https://api.line.me/v2/bot/message/push"
 _BROADCAST = "https://api.line.me/v2/bot/message/broadcast"
+_OAUTH = "https://api.line.me/v2/oauth/accessToken"
+
+# Cache the minted access token in-process. Token TTL is 30 days; we
+# refresh well before that so a long-running process never serves stale.
+_TOKEN_TTL_SEC = 25 * 24 * 3600  # 25 days
+_token_cache = {"value": "", "expires_at": 0}
+_token_lock = threading.Lock()
+
+
+def _mint_token(cid, secret):
+    body = urlencode({
+        "grant_type": "client_credentials",
+        "client_id": cid,
+        "client_secret": secret,
+    }).encode("utf-8")
+    req = Request(_OAUTH, data=body, method="POST",
+                  headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urlopen(req, timeout=20) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    return data.get("access_token") or ""
+
+
+def _get_token():
+    """Stateless: mint a fresh access token from channel_id+secret on every
+    call (cached for 25 days). Falls back to the DB-stored line_token only
+    if env vars aren't set, so the agency never has to babysit token expiry
+    again — the May incident where the digest silently failed for a day
+    happened because the DB token had quietly hit its 30-day expiry."""
+    cid = os.environ.get("LINE_CHANNEL_ID", "").strip()
+    secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+    if cid and secret:
+        with _token_lock:
+            now = time.time()
+            if _token_cache["value"] and now < _token_cache["expires_at"]:
+                return _token_cache["value"]
+            try:
+                tok = _mint_token(cid, secret)
+            except Exception:
+                tok = ""
+            if tok:
+                _token_cache["value"] = tok
+                _token_cache["expires_at"] = now + _TOKEN_TTL_SEC
+                # Mirror to DB so the dashboard "token set" indicator is
+                # truthful and external scripts can still read it.
+                try:
+                    db.set_setting("line_token", tok)
+                    db.set_setting("line_token_minted_at",
+                                   datetime.now(timezone.utc).isoformat())
+                except Exception:
+                    pass
+                return tok
+    return (db.get_setting("line_token", "") or "").strip()
 
 
 def _send(messages):
-    token = (db.get_setting("line_token", "") or "").strip()
+    token = _get_token()
     if not token:
+        db.set_setting("line_last_error", "no token (channel_id/secret env missing?)")
         return False, "line_token not configured"
     mode = (db.get_setting("line_mode", "broadcast") or "broadcast").strip()
 
@@ -39,9 +97,22 @@ def _send(messages):
     })
     try:
         with urlopen(req, timeout=20) as r:
-            return (200 <= r.status < 300), f"HTTP {r.status}"
+            ok = 200 <= r.status < 300
+            msg = f"HTTP {r.status}"
+            db.set_setting("line_last_error",
+                           "" if ok else f"{msg} at {datetime.now(timezone.utc).isoformat()}")
+            return ok, msg
     except Exception as e:
-        return False, str(e)[:200]
+        err = str(e)[:200]
+        # 401 from LINE = token died early — drop the cache so the next
+        # call re-mints from channel_id+secret right away.
+        if "401" in err or "Unauthorized" in err:
+            with _token_lock:
+                _token_cache["value"] = ""
+                _token_cache["expires_at"] = 0
+        db.set_setting("line_last_error",
+                       f"{err} at {datetime.now(timezone.utc).isoformat()}")
+        return False, err
 
 
 def push_hit(hit):
