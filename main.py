@@ -127,6 +127,43 @@ def api_stop():
             else {"error": "no run in progress"}), 200
 
 
+def api_brand_resend():
+    """Re-run the brand digest for unsent brand hits (notified=0) within
+    the recency window. Used when the prior scan's LINE send failed."""
+    pending = db.unnotified_brand_hits()
+    if not pending:
+        return {"ok": True, "pending": 0, "sent": 0}, 200
+    try:
+        max_age_days = int(db.get_setting("brand_digest_max_age_days", "3"))
+    except ValueError:
+        max_age_days = 3
+    from datetime import datetime as _dt, timedelta as _td
+    cutoff = (_dt.now(scheduler.TH_TZ) - _td(days=max_age_days)).date()
+    fresh, stale = [], []
+    for h in pending:
+        pa = (h.get("posted_at") or "")[:10]
+        try:
+            dd = _dt.strptime(pa, "%Y-%m-%d").date()
+        except ValueError:
+            dd = None
+        (fresh if (dd is None or dd >= cutoff) else stale).append(h)
+    for h in stale:
+        db.mark_notified(h["id"])
+    if not fresh:
+        return {"ok": True, "pending": len(pending), "fresh": 0,
+                "stale_archived": len(stale), "sent": 0}, 200
+    bubbles = scheduler._build_brand_bubbles(fresh)
+    import notify_line
+    ok, msg = notify_line.send_texts(bubbles)
+    if ok:
+        for h in fresh:
+            db.mark_notified(h["id"])
+    return {"ok": ok, "pending": len(pending), "fresh": len(fresh),
+            "stale_archived": len(stale),
+            "sent": len(fresh) if ok else 0,
+            "bubbles": len(bubbles), "line_status": msg}, 200
+
+
 def api_dedupe_hits():
     """Collapse duplicate hit rows (same channel+keyword+post_id) that were
     created before the dedup fix when Apify returned a slightly different URL
@@ -352,6 +389,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_health_check()
             elif path == "/api/dedupe_hits":
                 r, c = api_dedupe_hits()
+            elif path == "/api/brand_resend":
+                r, c = api_brand_resend()
             elif path == "/api/hit_status":
                 r, c = api_hit_status(payload)
             elif path == "/api/settings":
