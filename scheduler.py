@@ -4,6 +4,7 @@ Fires at each time in the run_times setting (default 08:00,16:00). Each run:
 per channel -> collect recent posts -> skip already-seen (incremental) ->
 keyword scan -> on hit: record + immediate LINE push. End of run: digest.
 """
+import json
 import threading
 import traceback
 from collections import OrderedDict
@@ -290,15 +291,53 @@ def run_once(triggered_by="manual"):
     return {"ok": True, "new_posts": new_posts, "hits": hits, "blocked": blocked}
 
 
+def _load_fired(key):
+    """Read a persisted {HH:MM -> date} fired-map from settings."""
+    try:
+        return json.loads(db.get_setting(key, "") or "{}")
+    except Exception:
+        return {}
+
+
+def _save_fired(key, fired):
+    try:
+        db.set_setting(key, json.dumps(fired))
+    except Exception:
+        pass
+
+
 def scheduler_thread(stop_event):
     """Fire run_once when Bangkok wall-clock crosses any configured time.
 
     Times in `run_times` (e.g. 08:00,16:00) are always interpreted in
     Asia/Bangkok — the comparison is timezone-aware, so it works whether
     the container's OS TZ is UTC, Bangkok, or anything else.
+
+    Fired-state is persisted to the DB (on the Railway volume) so a restart
+    inside a catch-up window doesn't re-fire — without this, redeploying
+    between 10:00–11:00 would send the daily report twice.
     """
-    last_fired = {}  # "HH:MM" -> date string (in Bangkok)
-    report_fired = {}  # "HH:MM" -> date string (in Bangkok)
+    last_fired = _load_fired("sched_watch_fired")     # "HH:MM" -> date (TH)
+    report_fired = _load_fired("sched_report_fired")  # "HH:MM" -> date (TH)
+
+    # Boot self-test: build the report once in THIS environment so any
+    # env-specific breakage (missing tzdata, moved sheet columns, network)
+    # screams in the deploy logs immediately instead of silently no-showing
+    # at 10:00 tomorrow.
+    try:
+        msgs = dca_report.build_messages()
+        print(f"[dca_report] boot self-test OK — builds {len(msgs)} bubble(s)",
+              flush=True)
+        db.set_setting("dca_selftest", json.dumps(
+            {"at": datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M"),
+             "ok": True, "bubbles": len(msgs)}))
+    except Exception as e:
+        print("[dca_report] boot self-test FAILED:", flush=True)
+        traceback.print_exc()
+        db.set_setting("dca_selftest", json.dumps(
+            {"at": datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M"),
+             "ok": False, "err": str(e)[:200]}))
+
     while not stop_event.is_set():
         try:
             now = datetime.now(TH_TZ)
@@ -321,6 +360,7 @@ def scheduler_thread(stop_event):
                 for hhmm in times:
                     if _due(hhmm, last_fired):
                         last_fired[hhmm] = today
+                        _save_fired("sched_watch_fired", last_fired)
                         run_once(triggered_by=f"auto {hhmm} TH")
 
             # Daily DCA content-status report (independent of the keyword watch).
@@ -332,15 +372,23 @@ def scheduler_thread(stop_event):
                                  or "10:00,16:00").split(",") if t.strip()]
                 for rt in report_times:
                     if _due(rt, report_fired, window=3600):
+                        # Persist BEFORE sending: if the send raises, we still
+                        # don't retry-loop or double-fire on restart this day.
                         report_fired[rt] = today
+                        _save_fired("sched_report_fired", report_fired)
                         print(f"[dca_report] firing for {rt} TH", flush=True)
+                        ok, msg = False, ""
                         try:
                             ok, msg = dca_report.send_report()
                             print(f"[dca_report] {rt} result ok={ok} msg={msg}",
                                   flush=True)
-                        except Exception:
+                        except Exception as e:
+                            msg = str(e)[:200]
                             print(f"[dca_report] {rt} EXCEPTION:", flush=True)
                             traceback.print_exc()
+                        db.set_setting("dca_last_run", json.dumps(
+                            {"at": now.strftime("%Y-%m-%d %H:%M"), "slot": rt,
+                             "ok": ok, "msg": msg}))
         except Exception:
             traceback.print_exc()
         stop_event.wait(30)

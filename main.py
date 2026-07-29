@@ -100,6 +100,11 @@ def api_state():
             "brand_kols_per_bubble": db.get_setting("brand_kols_per_bubble", "5"),
             "brand_digest_max_age_days": db.get_setting("brand_digest_max_age_days", "3"),
             "watchlist": db.get_setting("watchlist", "{}"),
+            "dca_report_enabled": db.get_setting("dca_report_enabled", "1"),
+            "dca_report_time": db.get_setting("dca_report_time", "10:00,16:00"),
+            "dca_last_run": db.get_setting("dca_last_run", ""),
+            "dca_selftest": db.get_setting("dca_selftest", ""),
+            "dca_campaigns": db.get_setting("dca_campaigns", ""),
         },
     }
 
@@ -231,13 +236,26 @@ def api_hit_status(payload):
     return {"ok": True}, 200
 
 
+def api_dca_report_test():
+    """Send the content-status report right now (manual trigger / smoke test)."""
+    import dca_report
+    try:
+        bubbles = dca_report.build_messages()
+        ok, msg = dca_report.send_report()
+        return {"ok": ok, "msg": msg, "bubbles": len(bubbles)}, 200
+    except Exception as e:
+        traceback.print_exc()
+        return {"ok": False, "error": str(e)[:300]}, 200
+
+
 def api_settings(payload):
     for k in ("run_times", "auto_enabled", "sheet_id", "sheet_gid", "line_to",
               "line_mode", "posts_per_check", "watchlist",
               "enable_bd_fallback", "scan_platforms",
               "client_brands", "brand_kols_per_bubble",
               "brand_digest_max_age_days",
-              "dca_report_enabled", "dca_report_time", "dca_sheet_id"):
+              "dca_report_enabled", "dca_report_time", "dca_sheet_id",
+              "dca_campaigns"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):
@@ -303,6 +321,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, {"posts": db.list_all_posts()})
             elif path == "/api/health_check":
                 self._json(200, scheduler.HEALTH)
+            elif path == "/api/dca_phases":
+                import dca_report
+                self._json(200, {"phases": dca_report.list_phases(),
+                                 "reporting": dca_report.get_campaigns()})
             elif path == "/api/posts.csv":
                 self._send_csv()
             else:
@@ -397,6 +419,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_hit_status(payload)
             elif path == "/api/settings":
                 r, c = api_settings(payload)
+            elif path == "/api/dca_report_test":
+                r, c = api_dca_report_test()
             else:
                 r, c = {"error": "not found"}, 404
             self._json(c, r)
