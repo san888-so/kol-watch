@@ -41,13 +41,30 @@ COL_NAMECONTENT = 8  # "Name + Content" — fallback join key
 COL_REVIEW = 43       # "Review Status"
 COL_LASTUPDATE = 44  # "Last Update"
 
-# PIC ("ผู้ดูแล") lives in a separate sheet whose Content Status tab has PIC in
-# column A, then Code in column B (everything shifted one column vs the main sheet).
+# PIC ("ผู้ดูแล") lives in our own working file, tab "PIC Of KOLs":
+#   col B = KOL name, col C = PIC, col D = backup PIC.
+# (It used to be read off that file's Content Status tab, col A. The team
+# restructured that tab — col A went blank — so every warning line printed
+# "ไม่เจอชื่อ". Keyed by KOL name now, which matches the main sheet's Name.)
 PIC_SHEET_ID = "1L2LZxKhBPvM6NICbH9dLF0wGAjlMQKPZcfG6yx2ebFs"
-PIC_COL_PIC = 0
-PIC_COL_CODE = 1
-PIC_COL_NAMECONTENT = 9
+PIC_TAB = "PIC Of KOLs"
+PIC_HDR_ROW = 1      # header on row index 1; data starts at 2
+PIC_COL_KOL = 1      # "KOLs List"
+PIC_COL_PIC = 2      # "PIC"
+PIC_COL_BACKUP = 3   # "สำรอง"
 NO_PIC = "ไม่เจอชื่อ"
+
+# Links appended at the end of the report so the team can jump straight into
+# the files. Override without a deploy via the `dca_links` setting
+# (JSON list of [label, url] pairs; "[]" hides the section).
+COUNT_TAB_GID = "794926805"      # "Count (Content Status)" tab of the master sheet
+WORK_STATUS_GID = "0"            # "Content Status" tab of our working file
+DEFAULT_LINKS = [
+    ("ไฟล์งานของเรา (Working File)",
+     f"https://docs.google.com/spreadsheets/d/{PIC_SHEET_ID}/edit#gid={WORK_STATUS_GID}"),
+    ("สรุปยอด Count (Content Status)",
+     f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={COUNT_TAB_GID}"),
+]
 
 STALE_DAYS = 3       # warn when an in-progress item hasn't moved in >= this many days
 MAX_BUBBLE = 4500    # LINE text message hard limit is ~5000; keep margin
@@ -60,8 +77,10 @@ LINE_BATCH = 5       # LINE API max messages per push/broadcast call.
 # `dca_campaigns` setting (see get_campaigns) — editable via /api/settings
 # with no code deploy. This is only the fallback when that setting is empty.
 DEFAULT_CAMPAIGNS = [
-    ("Smart Portfolio (Reframe)", "SP Reframe"),
-    ("Smart Portfolio (Life Style Integration)", "SP Life Style Integration"),
+    ("Q3 Community Campaign (Leader)", "CC Leader"),
+    ("Q3 Community Campaign (Participant)", "CC Participant"),
+    ("Market Hotspot (Aug)", "MH Aug"),
+    ("Market Hotspot (Sep)", "MH Sep"),
 ]
 
 
@@ -95,6 +114,35 @@ def get_campaigns():
         print(f"[dca_report] bad dca_campaigns setting ({e}); using defaults",
               flush=True)
         return DEFAULT_CAMPAIGNS
+
+def get_links():
+    """Read [(label, url), ...] from the `dca_links` setting (same shapes as
+    dca_campaigns: {"label","url"} objects or [label, url] pairs). Falls back
+    to DEFAULT_LINKS; an explicit empty list hides the section."""
+    try:
+        import db
+        raw = (db.get_setting("dca_links", "") or "").strip()
+        if not raw:
+            return DEFAULT_LINKS
+        out = []
+        for item in json.loads(raw):
+            if isinstance(item, dict):
+                url = str(item.get("url") or "").strip()
+                label = str(item.get("label") or "").strip() or url
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                label, url = str(item[0]).strip(), str(item[1]).strip()
+            elif isinstance(item, str):
+                url = label = item.strip()
+            else:
+                continue
+            if url:
+                out.append((label or url, url))
+        return out
+    except Exception as e:
+        print(f"[dca_report] bad dca_links setting ({e}); using defaults",
+              flush=True)
+        return DEFAULT_LINKS
+
 
 # When a campaign has more than this many in-progress items, summarize by
 # status count instead of listing every KOL name (keeps the LINE message short).
@@ -196,28 +244,42 @@ def fetch_rows(sheet_id=SHEET_ID, attempts=3):
 
 
 def fetch_pic_map(sheet_id=PIC_SHEET_ID):
-    """Return {Code: PIC, Name+Content: PIC} from the PIC sheet. On any
-    failure return {} so the report still sends (PIC shown as NO_PIC)."""
-    try:
-        rows = fetch_rows(sheet_id)  # same tab + header layout
-    except Exception:
+    """Return {KOL name: PIC} from our working file's "PIC Of KOLs" tab.
+    On any failure return {} so the report still sends (PIC shown as NO_PIC)."""
+    import time
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    rows = None
+    for i in range(3):
+        try:
+            raw = urllib.request.urlopen(url, timeout=60).read()
+            wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+            if PIC_TAB not in wb.sheetnames:
+                print(f"[dca_report] PIC tab {PIC_TAB!r} missing — "
+                      f"showing {NO_PIC}", flush=True)
+                return {}
+            rows = list(wb[PIC_TAB].iter_rows(values_only=True))[PIC_HDR_ROW + 1:]
+            break
+        except Exception as e:
+            print(f"[dca_report] fetch_pic_map attempt {i+1}/3 failed: {e}",
+                  flush=True)
+            if i < 2:
+                time.sleep(10 * (i + 1))
+    if rows is None:
         return {}
-    by_key = {}
+    by_name = {}
     for r in rows:
-        pic = _cell(r, PIC_COL_PIC)
-        if not pic:
-            continue
-        code = _cell(r, PIC_COL_CODE)
-        nc = _cell(r, PIC_COL_NAMECONTENT)
-        if code:
-            by_key[code] = pic
-        if nc:
-            by_key[nc] = pic
-    return by_key
+        kol = _cell(r, PIC_COL_KOL)
+        pic = _cell(r, PIC_COL_PIC) or _cell(r, PIC_COL_BACKUP)
+        if kol and pic:
+            by_name.setdefault(kol, pic)
+    if not by_name:
+        print("[dca_report] PIC map is empty — tab layout changed?", flush=True)
+    return by_name
 
 
 def _pic_for(row, pic_map):
-    return (pic_map.get(_cell(row, COL_CODE))
+    return (pic_map.get(_cell(row, COL_NAME))
+            or pic_map.get(_cell(row, COL_CODE))
             or pic_map.get(_cell(row, COL_NAMECONTENT))
             or NO_PIC)
 
@@ -344,6 +406,10 @@ def build_messages(sheet_id=SHEET_ID):
         sections.append(s)
         first = False
     sections.append(_warning_lines(by_phase, now, fetch_pic_map(), campaigns))
+    links = get_links()
+    if links:
+        sections.append(["🔗 ลิงก์ไฟล์งาน"]
+                        + [f"▸ {label}\n{url}" for label, url in links])
 
     # Merge smallest neighbor pairs until count <= MAX_BUBBLES.
     def size(sec): return sum(len(x) + 1 for x in sec)

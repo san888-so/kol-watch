@@ -105,6 +105,7 @@ def api_state():
             "dca_last_run": db.get_setting("dca_last_run", ""),
             "dca_selftest": db.get_setting("dca_selftest", ""),
             "dca_campaigns": db.get_setting("dca_campaigns", ""),
+            "dca_links": db.get_setting("dca_links", ""),
         },
     }
 
@@ -255,7 +256,7 @@ def api_settings(payload):
               "client_brands", "brand_kols_per_bubble",
               "brand_digest_max_age_days",
               "dca_report_enabled", "dca_report_time", "dca_sheet_id",
-              "dca_campaigns"):
+              "dca_campaigns", "dca_links"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):
