@@ -59,12 +59,11 @@ NO_PIC = "ไม่เจอชื่อ"
 # (JSON list of [label, url] pairs; "[]" hides the section).
 COUNT_TAB_GID = "794926805"      # "Count (Content Status)" tab of the master sheet
 WORK_STATUS_GID = "0"            # "Content Status" tab of our working file
-DEFAULT_LINKS = [
-    ("ไฟล์งานของเรา (Working File)",
-     f"https://docs.google.com/spreadsheets/d/{PIC_SHEET_ID}/edit#gid={WORK_STATUS_GID}"),
-    ("สรุปยอด Count (Content Status)",
-     f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={COUNT_TAB_GID}"),
-]
+# Off by default: LINE expands every Sheets URL into a big preview card
+# ("JavaScript is disabled" thumbnails), which buried the report. Set
+# dca_links to turn it back on, e.g.
+#   [["ไฟล์งานของเรา", "https://docs.google.com/spreadsheets/d/<id>/edit#gid=0"]]
+DEFAULT_LINKS = []
 
 STALE_DAYS = 3       # warn when an in-progress item hasn't moved in >= this many days
 MAX_BUBBLE = 4500    # LINE text message hard limit is ~5000; keep margin
@@ -77,7 +76,6 @@ LINE_BATCH = 5       # LINE API max messages per push/broadcast call.
 # `dca_campaigns` setting (see get_campaigns) — editable via /api/settings
 # with no code deploy. This is only the fallback when that setting is empty.
 DEFAULT_CAMPAIGNS = [
-    ("Q3 Community Campaign (Leader)", "CC Leader"),
     ("Q3 Community Campaign (Participant)", "CC Participant"),
     ("Market Hotspot (Aug)", "MH Aug"),
     ("Market Hotspot (Sep)", "MH Sep"),
