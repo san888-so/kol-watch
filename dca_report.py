@@ -76,9 +76,10 @@ LINE_BATCH = 5       # LINE API max messages per push/broadcast call.
 # `dca_campaigns` setting (see get_campaigns) — editable via /api/settings
 # with no code deploy. This is only the fallback when that setting is empty.
 DEFAULT_CAMPAIGNS = [
-    ("Q3 Community Campaign (Participant)", "CC Participant"),
     ("Market Hotspot (Aug)", "MH Aug"),
     ("Market Hotspot (Sep)", "MH Sep"),
+    ("Paper Trade", "Paper Trade"),
+    ("Diversified Investment & Build Trust", "Diversified investment & Build trust"),
 ]
 
 
@@ -309,6 +310,11 @@ def _campaign_lines(title, rows):
     for name, st in inprog:
         groups.setdefault(INPROG_LABEL.get(st, st), []).append(_short(name, 40))
     for label, names in sorted(groups.items(), key=lambda x: -len(x[1])):
+        if not label:
+            # Blank Review Status = brand-new campaign not kicked off yet;
+            # listing every KOL would just bury the rest of the report.
+            L.append(f"   ▸ ยังไม่เริ่ม ({len(names)})")
+            continue
         L.append(f"   ▸ {label} ({len(names)})")
         for name in names:
             L.append(f"      - {name}")
