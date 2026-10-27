@@ -99,8 +99,13 @@ def collect(channel, limit=10):
 
     if platform == "instagram":
         user = _ig_user(url)
+        if not user:
+            raise RuntimeError("cannot parse instagram username")
+        # Sheet links often carry ?igsh=/?fbclid=/&utm_* tails, which the
+        # actor's directUrls pattern rejects (HTTP 400) — send a clean URL.
         payload = {
-            "directUrls": [url], "resultsType": "posts",
+            "directUrls": [f"https://www.instagram.com/{user}/"],
+            "resultsType": "posts",
             "resultsLimit": limit, "addParentData": False,
         }
         raw = prov._call_actor_sync(ACTORS["instagram_general"], payload)

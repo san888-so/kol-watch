@@ -26,6 +26,7 @@ _HTML_CID_RE = re.compile(r'"(?:channelId|externalId)"\s*:\s*"(UC[\w-]{20,})"')
 _HANDLE_RE = re.compile(r"/@([^/?#]+)")
 _USER_RE = re.compile(r"/user/([^/?#]+)")
 _CUSTOM_RE = re.compile(r"/c/([^/?#]+)")
+_PLAYLIST_RE = re.compile(r"[?&]list=([\w-]+)")
 
 
 def _key():
@@ -51,10 +52,36 @@ def _channel_id_from_url(url):
     return m.group(1) if m else ""
 
 
-def _resolve_via_api(url):
+def _resolve_by_name(name):
+    """Last resort when the sheet link is stale (handle renamed, playlist
+    deleted): search channels by the KOL's name and accept only an exact
+    title match — the biggest one if several share the name."""
+    name = (name or "").strip()
+    if not name:
+        return ""
+    r = _api("search", part="snippet", q=name, type="channel", maxResults=5)
+    ids = [it["snippet"]["channelId"] for it in r.get("items") or []
+           if it["snippet"].get("title", "").strip() == name]
+    if len(ids) <= 1:
+        return ids[0] if ids else ""
+    r = _api("channels", part="statistics", id=",".join(ids))
+    items = r.get("items") or []
+    items.sort(key=lambda it: int(it["statistics"].get("subscriberCount") or 0),
+               reverse=True)
+    return items[0]["id"] if items else ids[0]
+
+
+def _resolve_via_api(url, name=""):
     cid = _channel_id_from_url(url)
     if cid:
         return cid
+    m = _PLAYLIST_RE.search(url)
+    if m:
+        r = _api("playlists", part="snippet", id=m.group(1))
+        items = r.get("items") or []
+        if items:
+            return items[0]["snippet"]["channelId"]
+        return _resolve_by_name(name)
     m = _HANDLE_RE.search(url)
     if m:
         r = _api("channels", part="id", forHandle=m.group(1))
@@ -74,7 +101,7 @@ def _resolve_via_api(url):
     items = r.get("items") or []
     if items:
         return items[0]["snippet"]["channelId"]
-    return ""
+    return _resolve_by_name(name)
 
 
 def _resolve_via_html(url):
@@ -85,8 +112,10 @@ def _resolve_via_html(url):
     return m.group(1) if m else ""
 
 
-def resolve_channel_id(profile_url):
-    return _resolve_via_api(profile_url) if _key() else _resolve_via_html(profile_url)
+def resolve_channel_id(profile_url, name=""):
+    if _key():
+        return _resolve_via_api(profile_url, name)
+    return _resolve_via_html(profile_url)
 
 
 # --- recent videos ---
@@ -141,7 +170,7 @@ def _collect_via_rss(cid):
 def collect(channel, limit=15):
     cid = channel.get("channel_id_cache")
     if not cid:
-        cid = resolve_channel_id(channel["profile_url"])
+        cid = resolve_channel_id(channel["profile_url"], channel.get("kol_name", ""))
         if not cid:
             raise RuntimeError("cannot resolve YouTube channel_id")
         channel["_resolved_channel_id"] = cid  # caller persists this
