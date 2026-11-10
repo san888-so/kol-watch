@@ -49,12 +49,18 @@ def _x_user(url):
 def _shape(item):
     pid = str(item.get("video_id") or "").strip()
     url = item.get("url") or ""
+    caption = item.get("caption") or ""
     if not pid and url:
-        # Some FB posts have no id field — derive a stable unique one from
-        # the URL. The identity lives in story_fbid/pfbid or a numeric path
-        # segment; fall back to hashing the whole URL (query included).
-        m = re.search(r"(?:story_fbid=|/posts/|/videos/|/reel/|fbid=)(pfbid\w+|\d+)", url)
-        key = m.group(1) if m else url
+        # Some FB posts have no id field, so derive one. Facebook re-issues
+        # the pfbid in the URL on every fetch (same post, new link each day),
+        # so the URL is NOT a stable identity. Prefer the caption text; only
+        # fall back to the URL for posts with little or no caption.
+        cap_key = re.sub(r"\s+", " ", caption).strip()
+        if len(cap_key) >= 20:
+            key = "cap:" + cap_key
+        else:
+            m = re.search(r"(?:story_fbid=|/posts/|/videos/|/reel/|fbid=)(pfbid\w+|\d+)", url)
+            key = m.group(1) if m else url
         pid = "fb-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
     return {
         "post_id": pid,

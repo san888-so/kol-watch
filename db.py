@@ -228,12 +228,26 @@ def clear_unresolved():
 
 # --- seen posts (incremental dedup) ---
 
-def post_seen(channel_id, post_id):
+def post_seen(channel_id, post_id, caption=None):
+    """True if this post was already scanned on this channel.
+
+    Matches the post_id first. If a caption is given (20+ chars) it also
+    matches a seen row on the same channel with the identical caption —
+    Facebook hands out a fresh link/id for the same post every day, and
+    without this every old FB post was re-counted (and re-alerted) daily."""
     with _conn() as c:
         r = c.execute(
             "SELECT 1 FROM seen_post WHERE channel_id=? AND post_id=?",
             (channel_id, post_id)).fetchone()
-        return r is not None
+        if r is not None:
+            return True
+        cap = (caption or "").strip()
+        if len(cap) >= 20:
+            r = c.execute(
+                "SELECT 1 FROM seen_post WHERE channel_id=? AND caption=? LIMIT 1",
+                (channel_id, caption)).fetchone()
+            return r is not None
+        return False
 
 
 def mark_seen(channel_id, post_id, post_url, posted_at,

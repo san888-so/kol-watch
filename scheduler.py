@@ -186,7 +186,8 @@ def run_once(triggered_by="manual"):
             is_excl = "non" not in (ch.get("kol_exclusivity") or "").lower()
             for p in posts:
                 pid = p.get("post_id") or ""
-                if not pid or db.post_seen(ch["id"], pid):
+                if not pid or db.post_seen(ch["id"], pid,
+                                           p.get("caption", "")):
                     continue
                 new_posts += 1
                 found = matcher.scan(p.get("caption", ""),

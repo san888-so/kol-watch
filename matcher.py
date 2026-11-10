@@ -16,6 +16,26 @@ _LEET = str.maketrans({"0": "o", "1": "l", "3": "e", "4": "a",
                        "5": "s", "7": "t", "@": "a", "$": "s"})
 _THAI = re.compile(r"[฀-๿]")
 
+# Ordinary Thai words that contain a competitor variant as a substring
+# (Thai has no spaces, so plain substring matching can't tell them apart).
+# These are blanked out before matching. Extra words can be added without a
+# deploy via the `watchlist_exclude` setting (JSON list of strings).
+_DEFAULT_EXCLUDE = [
+    "พาราไดม์", "พาราไดม",   # paradigm — contains ไดม์ (Dime)
+    "มูมมาม",                # messy eating — contains มูม (Moomoo)
+]
+
+
+def _exclude_words():
+    words = list(_DEFAULT_EXCLUDE)
+    try:
+        extra = json.loads(db.get_setting("watchlist_exclude", "[]") or "[]")
+        words += [w for w in extra if isinstance(w, str) and w.strip()]
+    except Exception:
+        pass
+    # longest first so "พาราไดม์" is removed before "พาราไดม"
+    return sorted({_norm(w) for w in words if _norm(w)}, key=len, reverse=True)
+
 
 def _norm(s):
     s = unicodedata.normalize("NFKC", s or "")
@@ -67,6 +87,8 @@ def scan(caption, hashtags, watchlist=None):
     parts += [("#" + h) for h in (hashtags or [])]
     raw = "  ".join(parts)
     text = _norm(raw)
+    for w in _exclude_words():
+        text = text.replace(w, " ")
     text_nospace = text.replace(" ", "")
     hits = []
     for keyword, variants in watchlist.items():

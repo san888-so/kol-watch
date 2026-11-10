@@ -253,7 +253,7 @@ def api_settings(payload):
     for k in ("run_times", "auto_enabled", "sheet_id", "sheet_gid", "line_to",
               "line_mode", "posts_per_check", "watchlist",
               "enable_bd_fallback", "scan_platforms",
-              "client_brands", "brand_kols_per_bubble",
+              "client_brands", "brand_kols_per_bubble", "watchlist_exclude",
               "brand_digest_max_age_days",
               "dca_report_enabled", "dca_report_time", "dca_sheet_id",
               "dca_campaigns", "dca_links"):
