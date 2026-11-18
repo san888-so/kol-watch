@@ -104,6 +104,11 @@ DEFAULT_SETTINGS = {
         "Dime": ["dime", "ไดม์", "ไดมส์", "d1me"],
         "Liberator": ["liberator", "ลิเบอเรเตอร์", "ลิเบอเรเตอร", "ลิเบอเรเตอ", "l1berator"],
     }, ensure_ascii=False),
+    # Broad topic words (e.g. หุ้นนอก) that only count as a competitor hit
+    # when the post does NOT mention our client's brand — a Webull-sponsored
+    # post about US stocks must not raise an alert. Same JSON shape as
+    # watchlist. Empty = feature off.
+    "watchlist_unbranded": "{}",
     "line_token": "",
     "line_to": "",
     "line_mode": "broadcast",
@@ -152,6 +157,12 @@ def init():
         hit_cols = {r["name"] for r in c.execute("PRAGMA table_info(hit)")}
         if "kind" not in hit_cols:
             c.execute("ALTER TABLE hit ADD COLUMN kind TEXT NOT NULL DEFAULT 'competitor'")
+        # Migration: KOLs whose contract was cancelled (or who were removed
+        # from the Sheet) stay in the db for history but are no longer
+        # scanned. See registry.sync_from_sheet.
+        kol_cols = {r["name"] for r in c.execute("PRAGMA table_info(kol)")}
+        if "active" not in kol_cols:
+            c.execute("ALTER TABLE kol ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
         for k, v in DEFAULT_SETTINGS.items():
             c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
 
@@ -169,17 +180,35 @@ def set_setting(key, value):
 
 # --- KOL / channel ---
 
-def upsert_kol(name, tier="", exclusivity=""):
+def upsert_kol(name, tier="", exclusivity="", active=1):
     with _lock, _conn() as c:
         r = c.execute("SELECT id FROM kol WHERE name=?", (name,)).fetchone()
         if r:
-            c.execute("UPDATE kol SET tier=?, exclusivity=? WHERE id=?",
-                      (tier, exclusivity, r["id"]))
+            c.execute("UPDATE kol SET tier=?, exclusivity=?, active=? WHERE id=?",
+                      (tier, exclusivity, int(active), r["id"]))
             return r["id"]
         cur = c.execute(
-            "INSERT INTO kol(name,tier,exclusivity) VALUES(?,?,?)",
-            (name, tier, exclusivity))
+            "INSERT INTO kol(name,tier,exclusivity,active) VALUES(?,?,?,?)",
+            (name, tier, exclusivity, int(active)))
         return cur.lastrowid
+
+
+def count_kols():
+    with _conn() as c:
+        return c.execute("SELECT COUNT(*) AS n FROM kol").fetchone()["n"]
+
+
+def deactivate_kols_not_in(names):
+    """Mark every KOL whose name is not in `names` inactive (no longer in
+    the Sheet). Rows are kept so old posts/hits stay readable. Returns the
+    names that were switched off by this call."""
+    keep = set(names)
+    with _lock, _conn() as c:
+        rows = c.execute("SELECT id, name FROM kol WHERE active=1").fetchall()
+        gone = [r for r in rows if r["name"] not in keep]
+        for r in gone:
+            c.execute("UPDATE kol SET active=0 WHERE id=?", (r["id"],))
+        return [r["name"] for r in gone]
 
 
 def upsert_channel(kol_id, platform, profile_url):
@@ -196,11 +225,16 @@ def upsert_channel(kol_id, platform, profile_url):
 
 
 def list_channels(active_only=True):
+    """Channels to work on. By default only those of active KOLs — a KOL
+    marked cancelled in the Sheet (or removed from it) is skipped by the
+    scan, the health check and the dashboard counts."""
+    where = "WHERE k.active=1" if active_only else ""
     with _conn() as c:
-        rows = c.execute("""
+        rows = c.execute(f"""
             SELECT ch.*, k.name AS kol_name, k.tier AS kol_tier,
-                   k.exclusivity AS kol_exclusivity
+                   k.exclusivity AS kol_exclusivity, k.active AS kol_active
             FROM channel ch JOIN kol k ON k.id = ch.kol_id
+            {where}
             ORDER BY k.name, ch.platform
         """).fetchall()
         return [dict(r) for r in rows]

@@ -156,6 +156,7 @@ def run_once(triggered_by="manual"):
 
     new_posts = hits = blocked = 0
     brand_wl = matcher.get_client_brands()
+    unbranded_wl = matcher.get_unbranded_watchlist()
     try:
         for ch in channels:
             if _STOP.is_set():
@@ -192,6 +193,18 @@ def run_once(triggered_by="manual"):
                 new_posts += 1
                 found = matcher.scan(p.get("caption", ""),
                                      p.get("hashtags", [])) if is_excl else []
+                # Client-brand matches, computed once: used for the brand
+                # report below and to decide whether broad topic words count.
+                bf = matcher.scan(p.get("caption", ""), p.get("hashtags", []),
+                                  watchlist=brand_wl) if brand_wl else []
+                # Broad topic words (หุ้นนอก ...) are a hit only on posts
+                # that do NOT mention the client — a Webull-sponsored post
+                # about US stocks is exactly what we paid for. Skipped when a
+                # named competitor already matched (one alert per post is enough).
+                if is_excl and unbranded_wl and not bf and not found:
+                    found += matcher.scan(p.get("caption", ""),
+                                          p.get("hashtags", []),
+                                          watchlist=unbranded_wl)
                 db.mark_seen(ch["id"], pid, p.get("url", ""),
                              p.get("posted_at", ""),
                              caption=p.get("caption", ""),
@@ -221,9 +234,6 @@ def run_once(triggered_by="manual"):
 
                 # ---- Client-brand report (no immediate push; batched at end) ----
                 if brand_wl:
-                    bf = matcher.scan(p.get("caption", ""),
-                                      p.get("hashtags", []),
-                                      watchlist=brand_wl)
                     for f in bf:
                         if db.hit_exists_for(ch["id"], f["keyword"],
                                              p.get("url", ""), pid):

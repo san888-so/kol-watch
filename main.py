@@ -142,6 +142,7 @@ def api_state():
             "brand_kols_per_bubble": db.get_setting("brand_kols_per_bubble", "5"),
             "brand_digest_max_age_days": db.get_setting("brand_digest_max_age_days", "3"),
             "watchlist": db.get_setting("watchlist", "{}"),
+            "watchlist_unbranded": db.get_setting("watchlist_unbranded", "{}"),
             "dca_report_enabled": db.get_setting("dca_report_enabled", "1"),
             "dca_report_time": db.get_setting("dca_report_time", "10:00,16:00"),
             "dca_last_run": db.get_setting("dca_last_run", ""),
@@ -296,6 +297,7 @@ def api_settings(payload):
               "line_mode", "posts_per_check", "watchlist",
               "enable_bd_fallback", "scan_platforms",
               "client_brands", "brand_kols_per_bubble", "watchlist_exclude",
+              "watchlist_unbranded",
               "brand_digest_max_age_days",
               "dca_report_enabled", "dca_report_time", "dca_sheet_id",
               "dca_campaigns", "dca_links"):
@@ -318,7 +320,7 @@ API_DOCS = {
         "/api/health_check": "last channel health check",
     },
     "POST": {
-        "/api/settings": "change settings (watchlist, run_times, dca_campaigns, ...)",
+        "/api/settings": "change settings (watchlist, watchlist_unbranded, run_times, dca_campaigns, ...)",
         "/api/sync": "re-sync KOL list from the Google Sheet",
         "/api/run": "run a full scan now (costs Apify credit)",
         "/api/stop": "stop a running scan",

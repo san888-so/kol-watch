@@ -2,6 +2,7 @@
 
 "All" tab layout (0-based columns), header on row 0, data from row 1:
   0 Name  1 Tier  2 Exclusive  3 E-Mail  4 CTA Link  5 Remark
+     (Remark containing "ยกเลิกสัญญา" = contract cancelled -> not scanned)
   6 Main Platform  7 Ploy Recheck  8 All Check
   9 TT Check  10 Tiktok Link
   11 FB Check  12 Facebook Link
@@ -27,6 +28,10 @@ import db  # noqa: E402
 COL_NAME = 0
 COL_TIER = 1
 COL_EXCL = 2
+COL_REMARK = 5
+# A row whose Remark contains this text is a cancelled contract: the KOL is
+# kept in the db (old posts/hits stay readable) but is no longer scanned.
+CANCEL_MARK = "ยกเลิกสัญญา"
 PLATFORM_COLS = {
     "tiktok": 10,
     "facebook": 12,
@@ -87,7 +92,10 @@ def sync_from_sheet(sheet_id, gid=None):
     db.clear_unresolved()
 
     existing = {(c["kol_id"], c["platform"], c["profile_url"])
-                for c in db.list_channels()}
+                for c in db.list_channels(active_only=False)}
+    kols_before = db.count_kols()
+    seen_names = set()
+    cancelled = 0
     kol_count = 0
     channel_count = 0
     new_channels = 0
@@ -101,8 +109,14 @@ def sync_from_sheet(sheet_id, gid=None):
             continue
         tier = _clean(r[COL_TIER]) if len(r) > COL_TIER else ""
         excl = _clean(r[COL_EXCL]) if len(r) > COL_EXCL else ""
-        kol_id = db.upsert_kol(name, tier, excl)
+        remark = _clean(r[COL_REMARK]) if len(r) > COL_REMARK else ""
+        is_cancelled = CANCEL_MARK in remark
+        kol_id = db.upsert_kol(name, tier, excl, active=0 if is_cancelled else 1)
+        seen_names.add(name)
         kol_count += 1
+        if is_cancelled:
+            cancelled += 1
+            continue  # keep its old channels, but don't add or scan any
 
         for platform, col in PLATFORM_COLS.items():
             raw = _clean(r[col]) if len(r) > col else ""
@@ -123,9 +137,18 @@ def sync_from_sheet(sheet_id, gid=None):
             db.upsert_channel(kol_id, platform, url)
             channel_count += 1
 
+    # KOLs that disappeared from the Sheet are switched off too — but only
+    # when the Sheet read looks complete, so a half-loaded / wrong tab can
+    # never silently turn the whole watch off.
+    removed = []
+    if kol_count and kol_count >= kols_before / 2:
+        removed = db.deactivate_kols_not_in(seen_names)
+
     return {
         "kols": kol_count,
         "channels": channel_count,
         "new_channels": new_channels,
         "unresolved": unresolved,
+        "cancelled": cancelled,
+        "removed": len(removed),
     }
