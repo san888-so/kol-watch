@@ -404,3 +404,22 @@ def list_line_sources(limit=20):
         return [dict(r) for r in c.execute(
             "SELECT * FROM line_source ORDER BY last_seen DESC LIMIT ?",
             (limit,)).fetchall()]
+
+
+def export_all():
+    """Every table as lists of dicts (secrets stripped) — for team data pulls."""
+    c = _conn()
+    c.row_factory = sqlite3.Row
+    out = {}
+    try:
+        names = [r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'")]
+        for n in names:
+            rows = [dict(r) for r in c.execute(f'SELECT * FROM "{n}"')]
+            if n == "settings":
+                rows = [r for r in rows if r.get("key") != "line_token"]
+            out[n] = rows
+    finally:
+        c.close()
+    return out

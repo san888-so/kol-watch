@@ -23,7 +23,47 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # secret ever lives in the repo). See .env.example.
 AUTH_USER = os.environ.get("KOLWATCH_USER", "")
 AUTH_PASS = os.environ.get("KOLWATCH_PASS", "")
+# Extra team accounts: KOLWATCH_USERS="petch:pw1,waan:pw2" (full access).
+# API keys for scripts / Claude: KOLWATCH_API_KEYS="petch:key1,waan:key2"
+# sent as header "Authorization: Bearer <key>" or "X-API-Key: <key>".
+
+
+def _pairs(env):
+    out = {}
+    for item in (os.environ.get(env, "") or "").split(","):
+        if ":" in item:
+            k, v = item.split(":", 1)
+            if k.strip() and v.strip():
+                out[k.strip()] = v.strip()
+    return out
+
+
+USERS = _pairs("KOLWATCH_USERS")
+if AUTH_USER and AUTH_PASS:
+    USERS.setdefault(AUTH_USER, AUTH_PASS)
+API_KEYS = {v: k for k, v in _pairs("KOLWATCH_API_KEYS").items()}
 _SESSIONS = set()
+
+
+def _check_login(u, p):
+    ok = False
+    for name, pw in USERS.items():
+        if hmac.compare_digest(u, name) and hmac.compare_digest(p, pw):
+            ok = True
+    return ok
+
+
+def _api_key_user(handler):
+    key = handler.headers.get("X-API-Key", "") or ""
+    auth = handler.headers.get("Authorization", "") or ""
+    if auth.lower().startswith("bearer "):
+        key = auth[7:].strip()
+    if not key:
+        return None
+    for k, user in API_KEYS.items():
+        if hmac.compare_digest(key, k):
+            return user
+    return None
 
 
 def _new_session():
@@ -35,7 +75,9 @@ def _new_session():
 def _authed(handler):
     cookie = SimpleCookie(handler.headers.get("Cookie", ""))
     m = cookie.get("kw_session")
-    return bool(m and m.value in _SESSIONS)
+    if m and m.value in _SESSIONS:
+        return True
+    return _api_key_user(handler) is not None
 
 
 LOGIN_HTML = """<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
@@ -264,6 +306,28 @@ def api_settings(payload):
     return {"ok": True}, 200
 
 
+API_DOCS = {
+    "auth": "Header 'Authorization: Bearer <API key>' (or X-API-Key), or log in on the web",
+    "GET": {
+        "/api/state": "overview: KOLs, channels, hits, settings, last runs",
+        "/api/posts": "every scanned post (JSON)",
+        "/api/posts.csv": "every scanned post (CSV, opens in Excel/Sheets)",
+        "/api/export": "every table in the database (JSON, LINE token removed)",
+        "/api/export.db": "full SQLite database file",
+        "/api/dca_phases": "campaign phases in the Webull content-status sheet",
+        "/api/health_check": "last channel health check",
+    },
+    "POST": {
+        "/api/settings": "change settings (watchlist, run_times, dca_campaigns, ...)",
+        "/api/sync": "re-sync KOL list from the Google Sheet",
+        "/api/run": "run a full scan now (costs Apify credit)",
+        "/api/stop": "stop a running scan",
+        "/api/hit_status": "mark a hit handled {id, status}",
+        "/api/dca_report_test": "send the daily report to LINE NOW (broadcasts!)",
+    },
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -328,11 +392,37 @@ class Handler(BaseHTTPRequestHandler):
                                  "reporting": dca_report.get_campaigns()})
             elif path == "/api/posts.csv":
                 self._send_csv()
+            elif path == "/api/export":
+                self._json(200, db.export_all())
+            elif path == "/api/export.db":
+                self._send_db()
+            elif path == "/api/docs":
+                self._json(200, API_DOCS)
             else:
                 self._json(404, {"error": "not found"})
         except Exception as e:
             traceback.print_exc()
             self._json(500, {"error": str(e)})
+
+    def _send_db(self):
+        import sqlite3, tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+        src = sqlite3.connect(db.DB_PATH, timeout=30)
+        dst = sqlite3.connect(tmp)
+        src.backup(dst)
+        src.close()
+        dst.execute("DELETE FROM settings WHERE key IN ('line_token')")
+        dst.commit(); dst.close()
+        with open(tmp, "rb") as f:
+            body = f.read()
+        os.unlink(tmp)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-sqlite3")
+        self.send_header("Content-Disposition",
+                         'attachment; filename="kol_watch.db"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _send_csv(self):
         import csv, io
@@ -385,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
             form = parse_qs(self.rfile.read(n).decode("utf-8")) if n else {}
             u = (form.get("username", [""])[0])
             p = (form.get("password", [""])[0])
-            if hmac.compare_digest(u, AUTH_USER) and hmac.compare_digest(p, AUTH_PASS):
+            if _check_login(u, p):
                 tok = _new_session()
                 self._redirect("/", extra_headers=[
                     ("Set-Cookie",
@@ -431,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    if not AUTH_USER or not AUTH_PASS:
+    if not USERS:
         import sys
         sys.exit("Set KOLWATCH_USER and KOLWATCH_PASS (see .env.example) "
                  "before starting.")
