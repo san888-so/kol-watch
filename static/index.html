@@ -120,6 +120,8 @@
     </div>
     <label>Watchlist คู่แข่ง (JSON: {"คำหลัก":["variant",...]})</label>
     <textarea id="watchlist" rows="5"></textarea>
+    <label>คำกว้างที่นับเป็นคู่แข่งเฉพาะโพสต์ที่ไม่พูดถึงแบรนด์ลูกค้า (JSON เหมือน Watchlist เช่น {"หุ้นนอก":["หุ้นต่างประเทศ"]} — เว้น {} = ปิด)</label>
+    <textarea id="watchlist_unbranded" rows="2"></textarea>
     <label>แบรนด์ลูกค้าที่จะ Report (JSON: {"Webull":["webull","วีบลู",...]})</label>
     <textarea id="client_brands" rows="3"></textarea>
     <label>จำนวน KOL ต่อบับเบิล LINE (รายงานแบรนด์)</label>
@@ -197,6 +199,7 @@ async function refresh(){
     try{$("#client_brands").value=JSON.stringify(JSON.parse(s.client_brands||"{}"),null,2);}catch(e){$("#client_brands").value=s.client_brands||"";}
     $("#brand_kols_per_bubble").value=s.brand_kols_per_bubble||"5";
     try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
+    try{$("#watchlist_unbranded").value=JSON.stringify(JSON.parse(s.watchlist_unbranded||"{}"),null,2);}catch(e){$("#watchlist_unbranded").value=s.watchlist_unbranded||"{}";}
     $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
   }
   // brand-report list — grouped by KOL
@@ -223,7 +226,7 @@ async function refresh(){
     ls.querySelectorAll('a.lsrc').forEach(a=>a.onclick=e=>{e.preventDefault();$("#line_to").value=a.dataset.id;});
   }
 }
-$("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}`);$("#syncBtn").disabled=false;refresh();};
+$("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}, ยกเลิกสัญญา ${r.cancelled||0}, หายจากชีต ${r.removed||0}`);$("#syncBtn").disabled=false;refresh();};
 $("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
 $("#stopBtn").onclick=async()=>{$("#stopBtn").disabled=true;await jpost("/api/stop",{});$("#stopBtn").disabled=false;refresh();};
 $("#brandBackfillBtn").onclick=async()=>{$("#brandBackfillBtn").disabled=true;$("#brandBackfillBtn").textContent="กำลังค้น…";const r=await jpost("/api/brand_backfill",{});$("#brandBackfillBtn").disabled=false;$("#brandBackfillBtn").textContent="🔍 ค้นย้อนหลังจากโพสต์ที่ดึงแล้ว";alert(r.error?r.error:`สแกน ${r.scanned} โพสต์ — เจอใหม่ ${r.added} รายการ`);refresh();};
@@ -231,6 +234,7 @@ $("#saveBtn").onclick=async()=>{
   const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
     line_mode:$("#line_mode").value,
     posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value,
+    watchlist_unbranded:$("#watchlist_unbranded").value,
     scan_platforms:$("#scan_platforms").value,enable_bd_fallback:$("#enable_bd_fallback").value,
     client_brands:$("#client_brands").value,brand_kols_per_bubble:$("#brand_kols_per_bubble").value};
   if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();

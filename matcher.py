@@ -50,6 +50,16 @@ def get_watchlist():
         return {}
 
 
+def get_unbranded_watchlist():
+    """Broad topic words (e.g. หุ้นนอก) that are only a competitor hit when
+    the post does not mention our client's brand. Empty = feature off."""
+    try:
+        wl = json.loads(db.get_setting("watchlist_unbranded", "{}") or "{}")
+        return wl if isinstance(wl, dict) else {}
+    except Exception:
+        return {}
+
+
 def get_client_brands():
     """Brands belonging to *our client* — surfaced in a separate report tab
     (not a competitor alert). Default Webull/วีบลู; editable in Settings."""
