@@ -41,6 +41,9 @@ OLLAMA = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 MODEL = os.environ.get("AI_MODEL", "gemma4:12b")
 BATCH = int(os.environ.get("AI_BATCH", "4"))
 IDLE_SEC = int(os.environ.get("AI_IDLE_SEC", "60"))
+# Same num_ctx as sogov-deep (gemma4:12b, 24576): a different value makes
+# Ollama reload the model every time the two jobs alternate.
+NUM_CTX = int(os.environ.get("AI_NUM_CTX", "24576"))
 
 
 def log(*a):
@@ -59,7 +62,7 @@ def kw(method, path, body=None, timeout=60):
 def llm(system, user, schema):
     body = {"model": MODEL, "stream": False, "format": schema, "think": False,
             "keep_alive": "20m",
-            "options": {"temperature": 0, "num_ctx": 8192},
+            "options": {"temperature": 0, "num_ctx": NUM_CTX},
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": user}]}
     req = urllib.request.Request(OLLAMA + "/api/chat",
