@@ -13,7 +13,9 @@ Stdlib only.
 """
 import json
 import os
+import re
 import sys
+import unicodedata
 import time
 import traceback
 import urllib.error
@@ -73,6 +75,49 @@ def llm(system, user, schema):
     return json.loads(out["message"]["content"])
 
 
+_ZW = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"), None)
+
+
+def _norm(t):
+    t = unicodedata.normalize("NFKC", t or "").translate(_ZW).lower()
+    return re.sub(r"[\s\-_.·•@#/]+", "", t)
+
+
+def _grounded(name, hay):
+    """A competitor counts only if its name is really in the post (text,
+    hashtags or links) — the model sometimes lists brands it was only
+    given as examples. Multi-word names pass if any word of 4+ chars that
+    isn't generic is present (e.g. 'Finansia' of 'Finansia HERO')."""
+    n = _norm(name)
+    if len(n) >= 3 and n in hay:
+        return True
+    generic = {"securities", "securitie", "trade", "trading", "invest", "app",
+               "global", "wealth", "bank", "thailand", "หลักทรัพย์", "แอป"}
+    for w in re.split(r"[\s/()+,]+", name or ""):
+        wn = _norm(w)
+        if len(wn) >= 4 and wn not in generic and wn in hay:
+            return True
+    return False
+
+
+def _quote(evidence, caption, names):
+    """Keep the evidence only if it is really quoted from the post;
+    otherwise cut a window around the first competitor name."""
+    raw = caption or ""
+    ev = (evidence or "").strip().strip('"“”')
+    parts = [x.strip() for x in re.split(r"\.\.\.|…", ev) if len(x.strip()) >= 8]
+    if parts and all(_norm(x) in _norm(raw) for x in parts):
+        return ev
+    low = raw.lower()
+    for nm in names:
+        for w in [nm] + re.split(r"\s+", nm):
+            i = low.find(w.lower()) if len(w) >= 3 else -1
+            if i >= 0:
+                a, b = max(0, i - 50), min(len(raw), i + len(w) + 60)
+                return ("…" if a else "") + raw[a:b].replace("\n", " ").strip() + ("…" if b < len(raw) else "")
+    return ""
+
+
 def review(post, policy, known):
     cap = (post.get("caption") or "").strip()
     if len(cap) < 4 and not post.get("hashtags"):
@@ -83,7 +128,21 @@ def review(post, policy, known):
     v["competitors"] = [c for c in (v.get("competitors") or [])
                         if str(c).strip() and str(c).strip().lower() not in
                         ("none", "webull", "วีบลู", "-", "n/a")]
+    hay = _norm((post.get("caption") or "") + " "
+                + " ".join(post.get("hashtags") or []) + " "
+                + (post.get("post_url") or ""))
+    named = v["competitors"]
+    v["competitors"] = [c for c in named if _grounded(c, hay)]
+    dropped = [c for c in named if c not in v["competitors"]]
+    v["evidence"] = _quote(v.get("evidence"), post.get("caption"), v["competitors"])
     lvl = v.get("level") or "none"
+    # Nothing named in the post -> can't be "urgent" (at most "watch").
+    if lvl == "urgent" and not v["competitors"]:
+        lvl = "watch"
+        v["reason"] = (v.get("reason") or "") + " · (ไม่พบชื่อคู่แข่งในโพสต์จริง" \
+            + (": " + ", ".join(dropped) if dropped else "") + ")"
+    if lvl == "watch" and not v["competitors"] and not v.get("foreign_stock_trading"):
+        lvl = "none"
     # Foreign-stock content that is about Webull itself is what we paid for.
     if lvl != "none" and not v["competitors"] and v.get("mentions_webull"):
         lvl = "none"
