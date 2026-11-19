@@ -11,7 +11,22 @@ _APIFY = {"tiktok", "instagram", "facebook", "x"}
 _QUOTA = ("hard limit", "platform-feature-disabled", "monthly usage")
 
 
-def collect(channel, limit=10):
+# Facebook/IG are fetched as "posts since the last check", so zero posts
+# just means nothing new; a gone/private page raises in apify_profile.
+_WINDOWED = {"facebook", "instagram"}
+
+
+def collect(channel, limit=10, windowed=True):
+    posts = _collect(channel, limit, windowed)
+    # Zero posts almost always means a renamed/deleted/private account or a
+    # wrong link — surface it as "เช็กไม่ได้" instead of a silent "ok".
+    if not posts and not (windowed and channel["platform"] in _WINDOWED):
+        raise RuntimeError("ดึงได้ 0 โพสต์ — บัญชีอาจเปลี่ยนชื่อ ถูกปิด เป็นส่วนตัว "
+                           "หรือลิงก์ในชีตผิด")
+    return posts
+
+
+def _collect(channel, limit=10, windowed=True):
     platform = channel["platform"]
     if platform == "youtube":
         return youtube_rss.collect(channel, limit=limit)
@@ -19,7 +34,7 @@ def collect(channel, limit=10):
         return lemon8.collect(channel, limit=limit)
     if platform in _APIFY:
         try:
-            return apify_profile.collect(channel, limit=limit)
+            return apify_profile.collect(channel, limit=limit, windowed=windowed)
         except Exception as e:
             # IMPORTANT cost guard: when Apify is over quota, do NOT
             # auto-cascade every channel to Brightdata (BD is far pricier

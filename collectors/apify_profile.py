@@ -74,7 +74,40 @@ def _shape(item):
     }
 
 
-def collect(channel, limit=10):
+def _window_hours(channel):
+    """FB/IG are asked only for posts newer than this many hours: the time
+    since this channel's last successful check + 2h overlap (min 4h, max
+    3 days). Their actors return posts out of date order and pinned posts
+    first, so "the latest N" missed new posts; a date window doesn't, and
+    since both bill per returned post it is also cheaper."""
+    from datetime import datetime, timezone
+    # last_ok, not last_checked: a failed run also stamps last_checked, and
+    # shrinking the window after failures would drop the posts in the gap.
+    lc = channel.get("last_ok") or channel.get("last_checked") or ""
+    try:
+        d = datetime.fromisoformat(lc)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        h = (datetime.now(timezone.utc) - d).total_seconds() / 3600 + 2
+    except ValueError:
+        h = 72
+    return int(min(max(h, 4), 72)) + 1
+
+
+def _apify_errors(raw):
+    """Split actor output into real items; 'no_items' = nothing new (fine),
+    any other error item = page gone/private -> raise."""
+    items = []
+    for r in raw:
+        err = r.get("error")
+        if not err:
+            items.append(r)
+        elif err != "no_items":
+            raise RuntimeError(f"{err}: {r.get('errorDescription') or ''}"[:300])
+    return items
+
+
+def collect(channel, limit=10, windowed=True):
     platform = channel["platform"]
     url = channel["profile_url"]
     prov = _provider()
@@ -85,13 +118,21 @@ def collect(channel, limit=10):
             raise RuntimeError("cannot parse tiktok username")
         # apidojo~tiktok-scraper: ~$0.30/1k vs clockworks ~$1.70/1k (5.6x
         # cheaper) and returns everything we need (id/title/hashtags/postPage).
+        # A profile shows up to 3 pinned clips first. Fetching only `limit`
+        # items meant 32/74 channels returned nothing but old pinned clips
+        # and their new clips were never seen (Nov 2026 audit) — so fetch
+        # 3 extra and drop the pinned ones (flagged isPinned).
         payload = {
             "startUrls": [{"url": f"https://www.tiktok.com/@{user}"}],
-            "maxItems": limit,
+            "maxItems": limit + 3,
         }
         raw = prov._call_actor_sync(ACTORS["tiktok_cheap"], payload)
+        raw = [r for r in raw if not r.get("noResults")]
+        if not raw:
+            raise RuntimeError("TikTok ไม่พบบัญชี/ไม่มีคลิป (ชื่อบัญชีอาจเปลี่ยน ถูกปิด หรือลิงก์ในชีตผิด)")
+        fresh = [r for r in raw if not r.get("isPinned")]
         out = []
-        for r in raw[:limit]:
+        for r in fresh[:limit]:
             tags = [h for h in (r.get("hashtags") or []) if h]
             out.append({
                 "post_id": str(r.get("id") or ""),
@@ -114,13 +155,19 @@ def collect(channel, limit=10):
             "resultsType": "posts",
             "resultsLimit": limit, "addParentData": False,
         }
-        raw = prov._call_actor_sync(ACTORS["instagram_general"], payload)
-        return [_shape(normalize_ig_post(r, "apify")) for r in raw[:limit]]
+        if windowed:
+            payload["resultsLimit"] = max(limit, 10)
+            payload["onlyPostsNewerThan"] = f"{_window_hours(channel)} hours"
+        raw = _apify_errors(prov._call_actor_sync(ACTORS["instagram_general"], payload))
+        return [_shape(normalize_ig_post(r, "apify")) for r in raw[:payload["resultsLimit"]]]
 
     if platform == "facebook":
         payload = {"startUrls": [{"url": url}], "resultsLimit": limit}
-        raw = prov._call_actor_sync(ACTORS["facebook_posts"], payload)
-        return [_shape(normalize_fb_post(r, "apify")) for r in raw[:limit]]
+        if windowed:
+            payload["resultsLimit"] = max(limit, 10)
+            payload["onlyPostsNewerThan"] = f"{_window_hours(channel)} hours"
+        raw = _apify_errors(prov._call_actor_sync(ACTORS["facebook_posts"], payload))
+        return [_shape(normalize_fb_post(r, "apify")) for r in raw[:payload["resultsLimit"]]]
 
     if platform == "x":
         user = _x_user(url)

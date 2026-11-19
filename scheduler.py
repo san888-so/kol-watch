@@ -51,7 +51,7 @@ def run_health_check():
     try:
         for ch in channels:
             try:
-                posts = collectors.collect(ch, limit=1)
+                posts = collectors.collect(ch, limit=1, windowed=False)
                 n = len(posts)
                 HEALTH["results"].append({
                     "kol": ch["kol_name"], "platform": ch["platform"],
@@ -244,8 +244,9 @@ def run_once(triggered_by="manual"):
                                    f["keyword"], f["snippet"],
                                    kind="brand")
 
+            _now_iso = datetime.now(timezone.utc).isoformat()
             db.update_channel(ch["id"], status="ok", last_error="",
-                              last_checked=datetime.now(timezone.utc).isoformat())
+                              last_checked=_now_iso, last_ok=_now_iso)
             PROGRESS["done"] += 1
 
         # ---- Brand report digest (batched, grouped by KOL) ----

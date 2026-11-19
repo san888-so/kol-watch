@@ -26,8 +26,9 @@ def collect(channel, limit=10):
             for _ in range(3):
                 page.mouse.wheel(0, 4000)
                 page.wait_for_timeout(1500)
+            final_url = page.url
             anchors = page.eval_on_selector_all(
-                "a[href*='/post/']",
+                "a[href]",
                 "els => els.map(e => ({href: e.href, text: e.innerText}))",
             )
             body_text = page.inner_text("body")
@@ -37,7 +38,9 @@ def collect(channel, limit=10):
     seen = set()
     for a in anchors:
         href = a.get("href") or ""
-        m = re.search(r"/post/([^/?#]+)", href)
+        # Post links: /@user/<numeric id> (current) or /post/<id> (old)
+        m = (re.search(r"lemon8-app\.com/@[^/?#]+/(\d{10,})", href)
+             or re.search(r"/post/([^/?#]+)", href))
         if not m:
             continue
         pid = m.group(1)
@@ -57,13 +60,12 @@ def collect(channel, limit=10):
             break
 
     if not out:
-        digest = hashlib.sha1(body_text.encode("utf-8")).hexdigest()[:16]
-        out.append({
-            "post_id": f"page-{digest}",
-            "url": url,
-            "caption": body_text,
-            "hashtags": re.findall(r"#([A-Za-z0-9_฀-๿]+)", body_text),
-            "posted_at": "",
-            "pinned": False,
-        })
+        # Used to return the whole page as one fake "post" — an expired
+        # share link (s.lemon8-app.com now 404s) then looked like a healthy
+        # channel for months. Fail loudly instead.
+        if "s.lemon8-app.com" in (final_url or url) or not body_text.strip():
+            raise RuntimeError(
+                "Lemon8: ลิงก์ย่อหมดอายุ/เปิดไม่ได้ — ใส่ลิงก์โปรไฟล์แบบ "
+                "https://www.lemon8-app.com/@ชื่อบัญชี ในชีตแทน")
+        raise RuntimeError("Lemon8: เปิดหน้าได้แต่ไม่พบโพสต์")
     return out

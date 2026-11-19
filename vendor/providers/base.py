@@ -58,6 +58,11 @@ def _parse_create_time(val) -> Optional[int]:
             s = val.replace("Z", "+00:00")
             dt = datetime.fromisoformat(s)
             return int(dt.timestamp())
+        except ValueError:
+            pass
+        try:  # X/Twitter: "Thu Nov 27 09:51:09 +0000 2025"
+            dt = datetime.strptime(val, "%a %b %d %H:%M:%S %z %Y")
+            return int(dt.timestamp())
         except Exception:
             return None
     return None

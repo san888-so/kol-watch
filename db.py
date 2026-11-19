@@ -177,6 +177,11 @@ def init():
         kol_cols = {r["name"] for r in c.execute("PRAGMA table_info(kol)")}
         if "active" not in kol_cols:
             c.execute("ALTER TABLE kol ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+        ch_cols = {r["name"] for r in c.execute("PRAGMA table_info(channel)")}
+        if "active" not in ch_cols:
+            c.execute("ALTER TABLE channel ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+        if "last_ok" not in ch_cols:   # last SUCCESSFUL fetch (FB/IG window)
+            c.execute("ALTER TABLE channel ADD COLUMN last_ok TEXT")
         ai_cols = {r["name"] for r in c.execute("PRAGMA table_info(ai_review)")}
         if "why" not in ai_cols:
             c.execute("ALTER TABLE ai_review ADD COLUMN why TEXT")
@@ -241,11 +246,26 @@ def upsert_channel(kol_id, platform, profile_url):
         return cur.lastrowid
 
 
+def set_active_channels(ids):
+    """Channels in `ids` (the links in the Sheet now) on, all others off.
+    Returns how many were switched off."""
+    ids = set(ids)
+    with _lock, _conn() as c:
+        rows = c.execute("SELECT id, active FROM channel").fetchall()
+        off = 0
+        for r in rows:
+            want = 1 if r["id"] in ids else 0
+            if r["active"] != want:
+                c.execute("UPDATE channel SET active=? WHERE id=?", (want, r["id"]))
+                off += (want == 0)
+        return off
+
+
 def list_channels(active_only=True):
     """Channels to work on. By default only those of active KOLs — a KOL
     marked cancelled in the Sheet (or removed from it) is skipped by the
     scan, the health check and the dashboard counts."""
-    where = "WHERE k.active=1" if active_only else ""
+    where = "WHERE k.active=1 AND ch.active=1" if active_only else ""
     with _conn() as c:
         rows = c.execute(f"""
             SELECT ch.*, k.name AS kol_name, k.tier AS kol_tier,

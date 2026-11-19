@@ -58,10 +58,17 @@ def _clean(v):
     return (v or "").strip()
 
 
+_BARE_RE = re.compile(
+    r"(?:www\.)?(?:[a-z0-9-]+\.)*(?:facebook\.com|fb\.com|youtube\.com|youtu\.be|"
+    r"tiktok\.com|x\.com|twitter\.com|instagram\.com|lemon8-app\.com)/[^\s]+", re.I)
+
+
 def _extract_url(raw):
     m = _URL_RE.search(raw)
     if not m:
-        return ""
+        # Links pasted without https:// (e.g. "instagram.com/name")
+        b = _BARE_RE.search(raw)
+        return ("https://" + b.group(0).rstrip(" ,);").strip()) if b else ""
     url = m.group(0).rstrip(" ,);").strip()
     # Unwrap Facebook link shim: l.facebook.com/l.php?u=<real-url>
     try:
@@ -93,6 +100,7 @@ def sync_from_sheet(sheet_id, gid=None):
 
     existing = {(c["kol_id"], c["platform"], c["profile_url"])
                 for c in db.list_channels(active_only=False)}
+    synced_channel_ids = set()
     kols_before = db.count_kols()
     seen_names = set()
     cancelled = 0
@@ -134,15 +142,20 @@ def sync_from_sheet(sheet_id, gid=None):
                 continue
             if (kol_id, platform, url) not in existing:
                 new_channels += 1
-            db.upsert_channel(kol_id, platform, url)
+            synced_channel_ids.add(db.upsert_channel(kol_id, platform, url))
             channel_count += 1
 
     # KOLs that disappeared from the Sheet are switched off too — but only
     # when the Sheet read looks complete, so a half-loaded / wrong tab can
     # never silently turn the whole watch off.
     removed = []
+    old_links = 0
     if kol_count and kol_count >= kols_before / 2:
         removed = db.deactivate_kols_not_in(seen_names)
+        # A link that was changed in the Sheet left the old URL behind and
+        # both were scanned (paid twice, or the wrong account). Only links
+        # that are in the Sheet right now stay on.
+        old_links = db.set_active_channels(synced_channel_ids)
 
     return {
         "kols": kol_count,
@@ -151,4 +164,5 @@ def sync_from_sheet(sheet_id, gid=None):
         "unresolved": unresolved,
         "cancelled": cancelled,
         "removed": len(removed),
+        "old_links_off": old_links,
     }
