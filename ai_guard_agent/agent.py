@@ -118,19 +118,69 @@ def _quote(evidence, caption, names):
     return ""
 
 
+_URL = re.compile(r"https?://[^\s<>\"')]+")
+_SHORT = ("t.co", "bit.ly", "lin.ee", "tinyurl.com", "cutt.ly", "s.id",
+          "rebrand.ly", "shorturl.at", "is.gd", "ow.ly", "goo.gl", "tiny.cc")
+
+
+def _expand_links(caption):
+    """Follow short links (t.co, bit.ly, lin.ee ...) to their real
+    destination — broker referral links often hide behind them.
+    Returns [(short, final_url)]; HEAD only, nothing is downloaded."""
+    out = []
+    for u in _URL.findall(caption or "")[:4]:
+        host = re.sub(r"^https?://", "", u).split("/")[0].lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if host not in _SHORT:
+            continue
+        try:
+            req = urllib.request.Request(u, method="HEAD",
+                                         headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                fin = r.geturl()
+            if fin and fin != u:
+                out.append((u, fin))
+        except Exception:
+            pass
+    return out
+
+
+def _where(name, post, links):
+    """Short Thai phrase: where in the post the name was found."""
+    n = _norm(name)
+    for short, fin in links:
+        if n and n in _norm(fin):
+            return "ลิงก์ย่อพาไป " + re.sub(r"^https?://(www\.)?", "", fin).split("/")[0]
+    for u in _URL.findall(post.get("caption") or ""):
+        if n and n in _norm(u):
+            return "ลิงก์ " + re.sub(r"^https?://(www\.)?", "", u).split("/")[0]
+    tags = " ".join(post.get("hashtags") or []) + " " + " ".join(
+        re.findall(r"#\S+", post.get("caption") or ""))
+    if n and n in _norm(tags):
+        return "แฮชแท็ก"
+    return "ข้อความ"
+
+
 def review(post, policy, known):
     cap = (post.get("caption") or "").strip()
     if len(cap) < 4 and not post.get("hashtags"):
         return {"level": "none", "competitors": [], "foreign_stock_trading": False,
                 "mentions_webull": False, "reason": "ไม่มีแคปชันให้อ่าน", "evidence": ""}
-    s, u = prompt.build(policy, known, post)
+    links = _expand_links(cap)
+    p2 = dict(post)
+    if links:
+        p2["caption"] = cap + "\n[ลิงก์ย่อในโพสต์พาไปที่: " + \
+            ", ".join(f for _, f in links) + "]"
+    s, u = prompt.build(policy, known, p2)
     v = llm(s, u, prompt.SCHEMA)
     v["competitors"] = [c for c in (v.get("competitors") or [])
                         if str(c).strip() and str(c).strip().lower() not in
                         ("none", "webull", "วีบลู", "-", "n/a")]
     hay = _norm((post.get("caption") or "") + " "
                 + " ".join(post.get("hashtags") or []) + " "
-                + (post.get("post_url") or ""))
+                + (post.get("post_url") or "") + " "
+                + " ".join(f for _, f in links))
     named = v["competitors"]
     v["competitors"] = [c for c in named if _grounded(c, hay)]
     dropped = [c for c in named if c not in v["competitors"]]
@@ -156,6 +206,15 @@ def review(post, policy, known):
             lvl = "watch"
             v["reason"] = (v.get("reason") or "") + " · (รอบสองไม่ยืนยัน: " + (c.get("reason") or "") + ")"
     v["level"] = lvl
+    why = (v.get("why_short") or "").strip()
+    if lvl != "none" and v["competitors"]:
+        locs = []
+        for c in v["competitors"][:3]:
+            w = _where(c, post, links)
+            if w not in locs:
+                locs.append(w)
+        why = (why + " · " if why else "") + "พบใน" + ", ".join(locs)
+    v["why"] = why[:200]
     return v
 
 

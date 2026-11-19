@@ -99,7 +99,8 @@ def save(payload):
         new = db.save_ai_review(
             sid, level, comps, r.get("foreign_stock_trading"),
             r.get("mentions_webull"), str(r.get("reason") or "")[:500],
-            str(r.get("evidence") or "")[:300], model)
+            str(r.get("evidence") or "")[:300], model,
+            str(r.get("why") or r.get("why_short") or "")[:200])
         if not new:
             out["skipped_dup"] += 1
             continue
@@ -134,10 +135,11 @@ def alert_flex(post, comps, r, model):
     foreign = bool(r.get("foreign_stock_trading"))
     what = ", ".join(comps) if comps else "สอนเทรดหุ้นต่างประเทศ (ไม่ใช่ Webull)"
     stamp = datetime.now(TH_TZ).strftime("%d/%m %H:%M")
-    posted = _posted_th(post.get("posted_at"))
+    posted = ("โพสต์ " + _posted_th(post["posted_at"])) if post.get("posted_at") \
+        else ("สแกนเจอ " + _posted_th(post.get("scanned_at")))
     rows = [
         _txt(post["kol"], weight="bold", size="xl", color="#111111"),
-        _txt(f"{post['platform']} · โพสต์ {posted}", size="sm", color="#667085"),
+        _txt(f"{post['platform']} · {posted}", size="sm", color="#667085"),
         {"type": "separator", "margin": "md"},
         {"type": "box", "layout": "baseline", "margin": "md", "spacing": "sm",
          "contents": [_txt("คู่แข่ง", size="sm", color="#667085", flex=2),
@@ -148,8 +150,13 @@ def alert_flex(post, comps, r, model):
                      "contents": [_txt("หุ้นนอก", size="sm", color="#667085", flex=2),
                                   _txt("พูดเรื่องซื้อ/เทรดหุ้นต่างประเทศ",
                                        size="sm", color="#111111", flex=6)]})
-    rows.append(_txt(r.get("reason") or "", size="sm", color="#344054",
-                     margin="md"))
+    why = (r.get("why") or r.get("why_short") or "").strip()
+    rows.append({"type": "box", "layout": "baseline", "spacing": "sm",
+                 "margin": "md",
+                 "contents": [_txt("เจอเพราะ", size="sm", color="#667085", flex=2),
+                              _txt(why or (r.get("reason") or "")[:120],
+                                   size="sm", weight="bold", color="#111111",
+                                   flex=6)]})
     ev = (r.get("evidence") or "").strip()
     if ev:
         rows.append({"type": "box", "layout": "vertical", "margin": "md",

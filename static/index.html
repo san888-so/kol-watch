@@ -298,7 +298,7 @@ async function loadAi(){
       <td><span class="badge ${r.level==='urgent'?'s-new':'s-contacted'}">${r.level==='urgent'?'🔴 ด่วน':'🟠 เฝ้าระวัง'}</span>${r.alerted?'<div class="muted">ส่ง LINE แล้ว</div>':''}</td>
       <td>${esc(r.kol)}<div class="muted">${esc(r.platform)} · ${fmtTH(r.posted_at)}</div></td>
       <td>${esc((r.competitors||[]).join(", ")||(r.foreign_trading?"หุ้นต่างประเทศ":"-"))}</td>
-      <td>${esc(r.reason)}${r.evidence?`<div class="muted">“${esc(r.evidence)}”</div>`:''}</td>
+      <td>${r.why?`<b>เจอเพราะ: ${esc(r.why)}</b><br>`:''}<span class="muted">${esc(r.reason)}</span>${r.evidence?`<div class="muted">“${esc(r.evidence)}”</div>`:''}</td>
       <td><a href="${esc(r.post_url)}" target="_blank">เปิด</a></td></tr>`);
   }
 }

@@ -32,11 +32,12 @@ SCHEMA = {
                                   "description": "โพสต์พูดเรื่องการซื้อ/เทรด/เปิดบัญชีหุ้นต่างประเทศ (ไม่ใช่แค่วิเคราะห์หุ้น)"},
         "mentions_webull": {"type": "boolean"},
         "level": {"type": "string", "enum": ["urgent", "watch", "none"]},
+        "why_short": {"type": "string", "description": "เจอเพราะอะไร สั้นมาก ไม่เกิน 10 คำ เช่น 'ให้ลิงก์เปิดพอร์ต HFM' / 'ไปงานเปิดตัวแอป HeroM ของ Finansia' / 'ติดแฮชแท็ก #Dime' (ว่างถ้า none)"},
         "reason": {"type": "string", "description": "เหตุผลภาษาไทย 1 ประโยคสั้น"},
         "evidence": {"type": "string", "description": "ข้อความจากโพสต์ที่เป็นหลักฐาน คัดมาตรงตัว ไม่เกิน 120 ตัวอักษร"},
     },
     "required": ["competitors", "foreign_stock_trading", "mentions_webull",
-                 "level", "reason", "evidence"],
+                 "level", "why_short", "reason", "evidence"],
 }
 
 

@@ -177,6 +177,9 @@ def init():
         kol_cols = {r["name"] for r in c.execute("PRAGMA table_info(kol)")}
         if "active" not in kol_cols:
             c.execute("ALTER TABLE kol ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+        ai_cols = {r["name"] for r in c.execute("PRAGMA table_info(ai_review)")}
+        if "why" not in ai_cols:
+            c.execute("ALTER TABLE ai_review ADD COLUMN why TEXT")
         for k, v in DEFAULT_SETTINGS.items():
             c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
 
@@ -516,7 +519,8 @@ def ai_post(seen_post_id):
     with _conn() as c:
         r = c.execute("""
             SELECT s.id AS seen_post_id, s.channel_id, s.post_id, s.post_url,
-                   s.posted_at, s.caption, ch.platform, k.name AS kol
+                   s.posted_at, s.scanned_at, s.caption, ch.platform,
+                   k.name AS kol
             FROM seen_post s JOIN channel ch ON ch.id = s.channel_id
             JOIN kol k ON k.id = ch.kol_id WHERE s.id=?""",
             (seen_post_id,)).fetchone()
@@ -524,16 +528,16 @@ def ai_post(seen_post_id):
 
 
 def save_ai_review(seen_post_id, level, competitors, foreign_trading,
-                   mentions_webull, reason, evidence, model):
+                   mentions_webull, reason, evidence, model, why=""):
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _conn() as c:
         cur = c.execute("""INSERT OR IGNORE INTO ai_review
             (seen_post_id,level,competitors,foreign_trading,mentions_webull,
-             reason,evidence,model,reviewed_at)
-            VALUES(?,?,?,?,?,?,?,?,?)""",
+             reason,evidence,model,reviewed_at,why)
+            VALUES(?,?,?,?,?,?,?,?,?,?)""",
             (seen_post_id, level, json.dumps(competitors, ensure_ascii=False),
              int(bool(foreign_trading)), int(bool(mentions_webull)),
-             reason, evidence, model, now))
+             reason, evidence, model, now, why))
         return cur.rowcount == 1   # False = already reviewed (no re-alert)
 
 
