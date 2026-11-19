@@ -75,6 +75,20 @@ CREATE TABLE IF NOT EXISTS unresolved (
     seen_at TEXT NOT NULL
 );
 
+-- AI reading of each scanned post (written by the sanmini kol-ai-guard
+-- agent through /api/ai/review). One row per seen_post.
+CREATE TABLE IF NOT EXISTS ai_review (
+    seen_post_id INTEGER PRIMARY KEY,
+    level TEXT NOT NULL,              -- urgent | watch | none | skip
+    competitors TEXT,                 -- JSON list
+    foreign_trading INTEGER DEFAULT 0,
+    mentions_webull INTEGER DEFAULT 0,
+    reason TEXT,
+    evidence TEXT,
+    model TEXT,
+    reviewed_at TEXT NOT NULL,
+    alerted INTEGER DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -457,3 +471,105 @@ def export_all():
     finally:
         c.close()
     return out
+
+
+# ---------------------------------------------------------------- AI review
+def ai_pending(limit=5, since=""):
+    """Scanned posts from Exclusive KOLs that the AI agent hasn't read yet,
+    newest first (fresh posts get alerted before the backlog drains)."""
+    with _conn() as c:
+        rows = c.execute("""
+            SELECT s.id AS seen_post_id, s.post_url, s.posted_at, s.caption,
+                   s.hashtags, s.scanned_at, ch.platform, k.name AS kol,
+                   k.exclusivity
+            FROM seen_post s
+            JOIN channel ch ON ch.id = s.channel_id
+            JOIN kol k ON k.id = ch.kol_id
+            LEFT JOIN ai_review a ON a.seen_post_id = s.id
+            WHERE a.seen_post_id IS NULL AND s.scanned_at >= ?
+              AND lower(coalesce(k.exclusivity,'')) NOT LIKE '%non%'
+            ORDER BY s.id DESC LIMIT ?""", (since, limit)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["hashtags"] = json.loads(d.get("hashtags") or "[]")
+        except Exception:
+            d["hashtags"] = []
+        out.append(d)
+    return out
+
+
+def ai_pending_count(since=""):
+    with _conn() as c:
+        return c.execute("""
+            SELECT count(*) FROM seen_post s
+            JOIN channel ch ON ch.id = s.channel_id
+            JOIN kol k ON k.id = ch.kol_id
+            LEFT JOIN ai_review a ON a.seen_post_id = s.id
+            WHERE a.seen_post_id IS NULL AND s.scanned_at >= ?
+              AND lower(coalesce(k.exclusivity,'')) NOT LIKE '%non%'""",
+            (since,)).fetchone()[0]
+
+
+def ai_post(seen_post_id):
+    with _conn() as c:
+        r = c.execute("""
+            SELECT s.id AS seen_post_id, s.channel_id, s.post_id, s.post_url,
+                   s.posted_at, s.caption, ch.platform, k.name AS kol
+            FROM seen_post s JOIN channel ch ON ch.id = s.channel_id
+            JOIN kol k ON k.id = ch.kol_id WHERE s.id=?""",
+            (seen_post_id,)).fetchone()
+        return dict(r) if r else None
+
+
+def save_ai_review(seen_post_id, level, competitors, foreign_trading,
+                   mentions_webull, reason, evidence, model):
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _conn() as c:
+        cur = c.execute("""INSERT OR IGNORE INTO ai_review
+            (seen_post_id,level,competitors,foreign_trading,mentions_webull,
+             reason,evidence,model,reviewed_at)
+            VALUES(?,?,?,?,?,?,?,?,?)""",
+            (seen_post_id, level, json.dumps(competitors, ensure_ascii=False),
+             int(bool(foreign_trading)), int(bool(mentions_webull)),
+             reason, evidence, model, now))
+        return cur.rowcount == 1   # False = already reviewed (no re-alert)
+
+
+def mark_ai_alerted(seen_post_id):
+    with _lock, _conn() as c:
+        c.execute("UPDATE ai_review SET alerted=1 WHERE seen_post_id=?",
+                  (seen_post_id,))
+
+
+def list_ai_reviews(levels=("urgent", "watch"), days=14, limit=300):
+    q = ",".join("?" * len(levels))
+    with _conn() as c:
+        rows = c.execute(f"""
+            SELECT a.*, s.post_url, s.posted_at, ch.platform, k.name AS kol,
+                   substr(s.caption,1,400) AS caption
+            FROM ai_review a JOIN seen_post s ON s.id = a.seen_post_id
+            JOIN channel ch ON ch.id = s.channel_id
+            JOIN kol k ON k.id = ch.kol_id
+            WHERE a.level IN ({q})
+              AND a.reviewed_at >= datetime('now', ?)
+            ORDER BY a.reviewed_at DESC LIMIT ?""",
+            (*levels, f"-{int(days)} days", limit)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["competitors"] = json.loads(d.get("competitors") or "[]")
+        except Exception:
+            d["competitors"] = []
+        out.append(d)
+    return out
+
+
+def ai_stats_since(since_iso):
+    with _conn() as c:
+        rows = c.execute("""SELECT level, count(*) n FROM ai_review
+                            WHERE reviewed_at >= ? GROUP BY level""",
+                         (since_iso,)).fetchall()
+    return {r["level"]: r["n"] for r in rows}

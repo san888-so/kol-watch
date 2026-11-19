@@ -127,6 +127,12 @@ def push_hit(hit):
     return _send([{"type": "text", "text": text[:4900]}])
 
 
+def push_flex(alt_text, bubble):
+    """One Flex bubble (used by the AI urgent alert)."""
+    return _send([{"type": "flex", "altText": alt_text[:400],
+                   "contents": bubble}])
+
+
 def digest(lines):
     return _send([{"type": "text", "text": "\n".join(lines)[:4900]}])
 

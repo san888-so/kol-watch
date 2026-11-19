@@ -48,6 +48,7 @@
   <div style="display:flex;gap:8px;margin-bottom:14px">
     <button id="tabWatchBtn">🛡️ เฝ้าระวัง</button>
     <button id="tabBrandBtn" class="ghost">📊 รายงานลูกค้า</button>
+    <button id="tabAiBtn" class="ghost">🤖 AI ตรวจโพสต์</button>
     <button id="tabPostsBtn" class="ghost">📰 โพสต์ทั้งหมด</button>
   </div>
 
@@ -59,6 +60,24 @@
       <div class="muted" id="brandInfo" style="margin-bottom:8px"></div>
       <div id="brandList"></div>
       <div class="muted" id="brandEmpty" style="display:none">ยังไม่เจอโพสต์ที่พูดถึงแบรนด์ลูกค้า</div>
+    </section>
+  </div>
+
+  <div id="tabAi" style="display:none">
+    <section>
+      <h2>🤖 AI อ่านทุกโพสต์ — พูดถึงคู่แข่งไหม / สอนเทรดหุ้นนอกไหม</h2>
+      <div class="muted" id="aiInfo" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="ghost aiF" data-l="urgent,watch">ทั้งหมด</button>
+        <button class="ghost aiF" data-l="urgent">🔴 ด่วน</button>
+        <button class="ghost aiF" data-l="watch">🟠 เฝ้าระวัง</button>
+      </div>
+      <table id="aiTbl"><thead><tr>
+        <th>ระดับ</th><th>KOL</th><th>คู่แข่ง</th><th>เหตุผล / หลักฐาน</th><th>โพสต์</th>
+      </tr></thead><tbody></tbody></table>
+      <div class="muted" id="aiEmpty" style="display:none">ยังไม่มีโพสต์ที่ AI ติดธง</div>
+      <p class="muted" style="margin-top:12px">🔴 ด่วน = โปรโมต/ให้ลิงก์/ชวนเปิดบัญชีคู่แข่ง หรือสอนเทรดหุ้นนอกผ่านเจ้าอื่น → เด้ง LINE ป้ายแดงทันที ·
+      🟠 เฝ้าระวัง = เอ่ยถึงแต่ไม่ได้โปรโมต (ไม่เด้ง LINE) · ตัว AI รันบน sanmini (Ollama gemma4) อ่านจากแคปชันเท่านั้น ไม่เห็นรูป/คลิป</p>
     </section>
   </div>
 
@@ -126,6 +145,13 @@
     <textarea id="client_brands" rows="3"></textarea>
     <label>จำนวน KOL ต่อบับเบิล LINE (รายงานแบรนด์)</label>
     <input id="brand_kols_per_bubble">
+    <div class="grid">
+      <div><label>🤖 เปิด AI อ่านโพสต์ (1/0)</label><input id="ai_review_enabled"></div>
+      <div><label>🤖 เด้ง LINE ป้ายแดงเมื่อ AI เจอ "ด่วน" (1/0)</label><input id="ai_alerts_enabled"></div>
+      <div><label>🤖 เด้งเฉพาะโพสต์ที่ลงภายใน (วัน)</label><input id="ai_alert_max_age_days"></div>
+    </div>
+    <label>🤖 กติกาให้ AI (เว้นว่าง = ใช้กติกามาตรฐาน · เขียนภาษาคนได้เลย เช่น นับอะไรเป็นคู่แข่ง/อะไรไม่นับ)</label>
+    <textarea id="ai_review_policy" rows="4" placeholder="(ใช้กติกามาตรฐาน)"></textarea>
     <div style="margin-top:12px"><button id="saveBtn">บันทึกการตั้งค่า</button></div>
   </section>
   </div>
@@ -154,6 +180,8 @@ async function refresh(){
    <div class="card ${d.hits.length?'warn':''}"><div class="n">${d.hits.length}</div><div class="l">เจอคำคู่แข่ง</div></div>
    <div class="card ${c.blocked?'warn':''}"><div class="n">${c.blocked}</div><div class="l">เช็กไม่ได้</div></div>
    <div class="card"><div class="n">${d.unresolved.length}</div><div class="l">ลิงก์เสีย</div></div>
+   ${d.ai?`<div class="card ${(d.ai.last24h.urgent||0)?'warn':''}"><div class="n">${d.ai.last24h.urgent||0}</div><div class="l">🤖 AI ด่วน 24 ชม.</div></div>
+   <div class="card ${(d.ai.agent_quiet_min==null||d.ai.agent_quiet_min>20)?'warn':''}"><div class="n" style="font-size:16px">${d.ai.agent_quiet_min==null?'ยังไม่ต่อ':(d.ai.agent_quiet_min>20?'เงียบ '+d.ai.agent_quiet_min+' นาที':'🟢 ออนไลน์')}</div><div class="l">AI agent · รออ่าน ${d.ai.pending}</div></div>`:''}
    <div class="card"><div class="l">แยกแพลตฟอร์ม</div><div class="muted">${Object.entries(c.by_platform).map(([k,v])=>k+":"+v).join("  ")}</div></div>`;
   const pr=d.progress;
   $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+fmtTH(pr.last_run)+" น. (GMT+7)"):"");
@@ -198,6 +226,8 @@ async function refresh(){
     $("#scan_platforms").value=s.scan_platforms||"";$("#enable_bd_fallback").value=s.enable_bd_fallback||"0";
     try{$("#client_brands").value=JSON.stringify(JSON.parse(s.client_brands||"{}"),null,2);}catch(e){$("#client_brands").value=s.client_brands||"";}
     $("#brand_kols_per_bubble").value=s.brand_kols_per_bubble||"5";
+    $("#ai_review_enabled").value=s.ai_review_enabled||"1";$("#ai_alerts_enabled").value=s.ai_alerts_enabled||"1";
+    $("#ai_alert_max_age_days").value=s.ai_alert_max_age_days||"3";$("#ai_review_policy").value=s.ai_review_policy||"";
     try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
     try{$("#watchlist_unbranded").value=JSON.stringify(JSON.parse(s.watchlist_unbranded||"{}"),null,2);}catch(e){$("#watchlist_unbranded").value=s.watchlist_unbranded||"{}";}
     $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
@@ -236,7 +266,9 @@ $("#saveBtn").onclick=async()=>{
     posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value,
     watchlist_unbranded:$("#watchlist_unbranded").value,
     scan_platforms:$("#scan_platforms").value,enable_bd_fallback:$("#enable_bd_fallback").value,
-    client_brands:$("#client_brands").value,brand_kols_per_bubble:$("#brand_kols_per_bubble").value};
+    client_brands:$("#client_brands").value,brand_kols_per_bubble:$("#brand_kols_per_bubble").value,
+    ai_review_enabled:$("#ai_review_enabled").value,ai_alerts_enabled:$("#ai_alerts_enabled").value,
+    ai_alert_max_age_days:$("#ai_alert_max_age_days").value,ai_review_policy:$("#ai_review_policy").value};
   if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();
   const r=await jpost("/api/settings",b);alert(r.error?r.error:"บันทึกแล้ว");$("#line_token").value="";refresh();
 };
@@ -246,14 +278,35 @@ function showTab(t){
   $("#tabWatch").style.display=t==="watch"?"block":"none";
   $("#tabBrand").style.display=t==="brand"?"block":"none";
   $("#tabPosts").style.display=t==="posts"?"block":"none";
+  $("#tabAi").style.display=t==="ai"?"block":"none";
+  $("#tabAiBtn").className=t==="ai"?"":"ghost";
   $("#tabWatchBtn").className=t==="watch"?"":"ghost";
   $("#tabBrandBtn").className=t==="brand"?"":"ghost";
   $("#tabPostsBtn").className=t==="posts"?"":"ghost";
   if(t==="posts")loadPosts();
+  if(t==="ai")loadAi();
 }
+let aiLevels="urgent,watch";
+async function loadAi(){
+  const d=await (await fetch("/api/ai/reviews?days=14&levels="+aiLevels)).json();
+  const st=d.status;
+  $("#aiInfo").textContent=`agent: ${st.agent||'-'} · ล่าสุด ${st.agent_seen?fmtTH(st.agent_seen)+' น.':'ยังไม่เคยต่อ'} · รออ่าน ${st.pending} โพสต์ · 24 ชม.: ด่วน ${st.last24h.urgent||0} / เฝ้าระวัง ${st.last24h.watch||0} / ปกติ ${st.last24h.none||0}`;
+  const tb=$("#aiTbl tbody");tb.innerHTML="";
+  $("#aiEmpty").style.display=d.reviews.length?"none":"block";
+  for(const r of d.reviews){
+    tb.insertAdjacentHTML("beforeend",`<tr>
+      <td><span class="badge ${r.level==='urgent'?'s-new':'s-contacted'}">${r.level==='urgent'?'🔴 ด่วน':'🟠 เฝ้าระวัง'}</span>${r.alerted?'<div class="muted">ส่ง LINE แล้ว</div>':''}</td>
+      <td>${esc(r.kol)}<div class="muted">${esc(r.platform)} · ${fmtTH(r.posted_at)}</div></td>
+      <td>${esc((r.competitors||[]).join(", ")||(r.foreign_trading?"หุ้นต่างประเทศ":"-"))}</td>
+      <td>${esc(r.reason)}${r.evidence?`<div class="muted">“${esc(r.evidence)}”</div>`:''}</td>
+      <td><a href="${esc(r.post_url)}" target="_blank">เปิด</a></td></tr>`);
+  }
+}
+document.querySelectorAll(".aiF").forEach(b=>b.onclick=()=>{aiLevels=b.dataset.l;loadAi();});
 $("#tabWatchBtn").onclick=()=>showTab("watch");
 $("#tabBrandBtn").onclick=()=>showTab("brand");
 $("#tabPostsBtn").onclick=()=>showTab("posts");
+$("#tabAiBtn").onclick=()=>showTab("ai");
 
 async function loadPosts(){
   const d=await (await fetch("/api/posts")).json();

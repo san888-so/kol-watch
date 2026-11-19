@@ -292,6 +292,13 @@ def run_once(triggered_by="manual"):
             f"📊 เจอโพส {brand_label}: {brand_sent}  (เฉพาะโพสต์ลงภายใน {max_age_days} วัน)\n"
             f"❌ เช็กไม่ได้: {blocked}"
         )
+        try:
+            import ai_review
+            ai_line = ai_review.digest_line()
+            if ai_line:
+                summary += "\n" + ai_line
+        except Exception:
+            traceback.print_exc()
         PROGRESS["summary"] = summary
         if not stopped:  # don't LINE-spam a digest on a manual stop
             notify_line.digest([summary])

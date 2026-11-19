@@ -14,6 +14,7 @@ from urllib.parse import urlparse, parse_qs
 import db
 import registry
 import scheduler
+import ai_review
 
 # Railway injects PORT; locally use KOLWATCH_PORT (default 5070).
 PORT = int(os.environ.get("PORT") or os.environ.get("KOLWATCH_PORT") or "5070")
@@ -149,7 +150,12 @@ def api_state():
             "dca_selftest": db.get_setting("dca_selftest", ""),
             "dca_campaigns": db.get_setting("dca_campaigns", ""),
             "dca_links": db.get_setting("dca_links", ""),
+            "ai_review_enabled": db.get_setting("ai_review_enabled", "1"),
+            "ai_alerts_enabled": db.get_setting("ai_alerts_enabled", "1"),
+            "ai_alert_max_age_days": db.get_setting("ai_alert_max_age_days", "3"),
+            "ai_review_policy": db.get_setting("ai_review_policy", ""),
         },
+        "ai": ai_review.status(),
     }
 
 
@@ -300,7 +306,9 @@ def api_settings(payload):
               "watchlist_unbranded",
               "brand_digest_max_age_days",
               "dca_report_enabled", "dca_report_time", "dca_sheet_id",
-              "dca_campaigns", "dca_links"):
+              "dca_campaigns", "dca_links",
+              "ai_review_enabled", "ai_alerts_enabled",
+              "ai_alert_max_age_days", "ai_review_policy"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):
@@ -318,6 +326,8 @@ API_DOCS = {
         "/api/export.db": "full SQLite database file",
         "/api/dca_phases": "campaign phases in the Webull content-status sheet",
         "/api/health_check": "last channel health check",
+        "/api/ai/reviews?days=7&levels=urgent,watch": "posts the AI flagged (competitor / foreign-stock trading)",
+        "/api/ai/pending?limit=5": "(agent) next posts for the AI to read",
     },
     "POST": {
         "/api/settings": "change settings (watchlist, watchlist_unbranded, run_times, dca_campaigns, ...)",
@@ -326,6 +336,7 @@ API_DOCS = {
         "/api/stop": "stop a running scan",
         "/api/hit_status": "mark a hit handled {id, status}",
         "/api/dca_report_test": "send the daily report to LINE NOW (broadcasts!)",
+        "/api/ai/review": "(agent) save AI verdicts {model, results:[{seen_post_id, level, competitors, ...}]}",
     },
 }
 
@@ -400,6 +411,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_db()
             elif path == "/api/docs":
                 self._json(200, API_DOCS)
+            elif path == "/api/ai/pending":
+                q = parse_qs(urlparse(self.path).query)
+                self._json(200, ai_review.pending(
+                    (q.get("limit") or ["5"])[0], _api_key_user(self) or "web"))
+            elif path == "/api/ai/reviews":
+                q = parse_qs(urlparse(self.path).query)
+                lv = tuple(x for x in (q.get("levels") or ["urgent,watch"])[0]
+                           .split(",") if x in ai_review.LEVELS) or ("urgent", "watch")
+                self._json(200, {"status": ai_review.status(),
+                                 "reviews": db.list_ai_reviews(
+                                     lv, int((q.get("days") or ["14"])[0]))})
             else:
                 self._json(404, {"error": "not found"})
         except Exception as e:
@@ -514,6 +536,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_settings(payload)
             elif path == "/api/dca_report_test":
                 r, c = api_dca_report_test()
+            elif path == "/api/ai/review":
+                r, c = ai_review.save(payload), 200
             else:
                 r, c = {"error": "not found"}, 404
             self._json(c, r)
