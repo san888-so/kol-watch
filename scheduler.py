@@ -209,7 +209,8 @@ def run_once(triggered_by="manual"):
                              p.get("posted_at", ""),
                              caption=p.get("caption", ""),
                              hashtags=p.get("hashtags", []),
-                             matched=bool(found))
+                             matched=bool(found),
+                             subtitle_url=p.get("subtitle_url", ""))
                 for f in found:
                     # Skip if this post+keyword was already flagged (any
                     # status) — no duplicate alerts, incl. ones marked

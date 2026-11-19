@@ -166,6 +166,8 @@ def init():
             c.execute("ALTER TABLE seen_post ADD COLUMN caption TEXT")
         if "hashtags" not in cols:
             c.execute("ALTER TABLE seen_post ADD COLUMN hashtags TEXT")
+        if "subtitle_url" not in cols:  # TikTok auto-subtitles (speech as text)
+            c.execute("ALTER TABLE seen_post ADD COLUMN subtitle_url TEXT")
         # Migration: tag every hit with a kind so we can split the
         # competitor watch from the client-brand report.
         hit_cols = {r["name"] for r in c.execute("PRAGMA table_info(hit)")}
@@ -322,15 +324,16 @@ def post_seen(channel_id, post_id, caption=None):
 
 
 def mark_seen(channel_id, post_id, post_url, posted_at,
-              caption="", hashtags=None, matched=False):
+              caption="", hashtags=None, matched=False, subtitle_url=""):
     now = datetime.now(timezone.utc).isoformat()
     tags = " ".join(hashtags or [])
     with _lock, _conn() as c:
         c.execute("""INSERT OR IGNORE INTO seen_post
-            (channel_id,post_id,post_url,posted_at,caption,hashtags,scanned_at,matched)
-            VALUES(?,?,?,?,?,?,?,?)""",
+            (channel_id,post_id,post_url,posted_at,caption,hashtags,scanned_at,
+             matched,subtitle_url)
+            VALUES(?,?,?,?,?,?,?,?,?)""",
             (channel_id, post_id, post_url, posted_at, caption, tags,
-             now, 1 if matched else 0))
+             now, 1 if matched else 0, subtitle_url or None))
 
 
 def list_all_posts():
@@ -503,7 +506,8 @@ def ai_pending(limit=5, since=""):
     with _conn() as c:
         rows = c.execute("""
             SELECT s.id AS seen_post_id, s.post_url, s.posted_at, s.caption,
-                   s.hashtags, s.scanned_at, ch.platform, k.name AS kol,
+                   s.hashtags, s.scanned_at, s.subtitle_url, ch.platform,
+                   k.name AS kol,
                    k.exclusivity
             FROM seen_post s
             JOIN channel ch ON ch.id = s.channel_id
@@ -515,10 +519,11 @@ def ai_pending(limit=5, since=""):
     out = []
     for r in rows:
         d = dict(r)
+        raw = d.get("hashtags") or ""
         try:
-            d["hashtags"] = json.loads(d.get("hashtags") or "[]")
+            d["hashtags"] = json.loads(raw) if raw.startswith("[") else raw.split()
         except Exception:
-            d["hashtags"] = []
+            d["hashtags"] = raw.split()
         out.append(d)
     return out
 

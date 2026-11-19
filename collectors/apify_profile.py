@@ -74,6 +74,17 @@ def _shape(item):
     }
 
 
+def _tiktok_subtitle(r):
+    subs = [s for s in (r.get("subtitleInformation") or []) if s.get("url")]
+    for pick in (lambda s: (s.get("language_code") or "").startswith("th"),
+                 lambda s: s.get("is_original_caption"),
+                 lambda s: (s.get("language_code") or "").startswith("en")):
+        for s in subs:
+            if pick(s):
+                return s["url"]
+    return ""
+
+
 def _window_hours(channel):
     """FB/IG are asked only for posts newer than this many hours: the time
     since this channel's last successful check + 2h overlap (min 4h, max
@@ -141,6 +152,10 @@ def collect(channel, limit=10, windowed=True):
                 "hashtags": tags,
                 "posted_at": r.get("uploadedAtFormatted") or "",
                 "pinned": False,
+                # TikTok's auto-subtitles = what is SAID in the clip. The AI
+                # agent on sanmini reads them (a KOL can plug a broker by
+                # voice without writing it in the caption).
+                "subtitle_url": _tiktok_subtitle(r),
             })
         return out
 

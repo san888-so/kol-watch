@@ -11,10 +11,14 @@ Polling means nothing on sanmini is exposed to the internet; new posts are
 picked up within a minute, even while a scan is still running.
 Stdlib only.
 """
+import glob
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unicodedata
 import time
 import traceback
@@ -146,6 +150,19 @@ def _expand_links(caption):
     return out
 
 
+# How Webull shows up in captions and especially in auto-subtitles. These
+# are the client, never a competitor (Money Hero's Webull plug was heard as
+# "Vbu" and nearly raised an alert).
+_CLIENT = re.compile(
+    r"web\s*-?\s*bull|webul|we\s*bull|wee\s*bull|v\s*-?\s*bu(ll|l)?\b|vbull|วีบลู|วีบูล|วีบุล|"
+    r"เว็บบูล|เวบบูล|เว็บบลู|วิบูล|วีบู", re.I)
+
+
+def _is_client(name):
+    n = (name or "").strip()
+    return bool(n) and bool(_CLIENT.search(n) or _CLIENT.fullmatch(n))
+
+
 def _where(name, post, links):
     """Short Thai phrase: where in the post the name was found."""
     n = _norm(name)
@@ -162,9 +179,78 @@ def _where(name, post, links):
     return "ข้อความ"
 
 
+YTDLP = os.environ.get("YTDLP", "/opt/homebrew/bin/yt-dlp")
+# Words around which a long transcript is kept (sponsor plugs, sign-up asks).
+_HOT = ("เปิดบัญชี", "เปิดพอร์ต", "โหลดแอป", "ดาวน์โหลด", "สมัคร", "ลิงก์", "ลิ้งค์",
+        "โบรก", "ค่าคอม", "สปอนเซอร์", "ขอบคุณ", "แอป", "บล.", "หลักทรัพย์", "โค้ด")
+
+
+def _vtt_text(vtt):
+    out, last = [], ""
+    for line in vtt.splitlines():
+        line = line.strip()
+        if (not line or "-->" in line or line.startswith(("WEBVTT", "Kind:", "Language:", "NOTE"))
+                or line.isdigit()):
+            continue
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        if line and line != last:      # YouTube auto-subs repeat each line
+            out.append(line)
+            last = line
+    return " ".join(out)
+
+
+def _transcript(post):
+    """What is SAID in a TikTok/YouTube clip (auto-subtitles), '' if none."""
+    try:
+        if post.get("platform") == "tiktok" and post.get("subtitle_url"):
+            req = urllib.request.Request(post["subtitle_url"],
+                                         headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return _vtt_text(r.read().decode("utf-8", "ignore"))
+        if post.get("platform") == "youtube" and "youtu" in (post.get("post_url") or ""):
+            d = tempfile.mkdtemp(prefix="kolsub_")
+            try:
+                subprocess.run([YTDLP, "--skip-download", "--write-auto-subs", "--write-subs",
+                                "--sub-langs", "th,th-orig,th.*,en", "--sub-format", "vtt",
+                                "-o", os.path.join(d, "s"), post["post_url"]],
+                               capture_output=True, timeout=120)
+                files = sorted(glob.glob(os.path.join(d, "*.vtt")),
+                               key=lambda f: (".th" not in f, f))
+                if files:
+                    return _vtt_text(open(files[0], encoding="utf-8", errors="ignore").read())
+            finally:
+                shutil.rmtree(d, ignore_errors=True)
+    except Exception as e:
+        log("transcript failed", post.get("seen_post_id"), str(e)[:120])
+    return ""
+
+
+def _trim(t, known, limit=6000):
+    """Keep start + end (where plugs usually are) + windows around hot words."""
+    if len(t) <= limit:
+        return t
+    keep = [(0, 2500), (len(t) - 1500, len(t))]
+    low = t.lower()
+    for w in list(_HOT) + [k.lower() for k in known]:
+        i = low.find(w.lower())
+        while i >= 0 and len(keep) < 14:
+            keep.append((max(0, i - 200), min(len(t), i + 300)))
+            i = low.find(w.lower(), i + 300)
+    keep.sort()
+    merged = []
+    for a, b in keep:
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(b, merged[-1][1]))
+        else:
+            merged.append((a, b))
+    return " … ".join(t[a:b] for a, b in merged)[: limit + 1500]
+
+
 def review(post, policy, known):
     cap = (post.get("caption") or "").strip()
-    if len(cap) < 4 and not post.get("hashtags"):
+    full_tr = _transcript(post)
+    post = dict(post, transcript=_trim(full_tr, known) if full_tr else "")
+    if len(cap) < 4 and not post.get("hashtags") and not post["transcript"]:
         return {"level": "none", "competitors": [], "foreign_stock_trading": False,
                 "mentions_webull": False, "reason": "ไม่มีแคปชันให้อ่าน", "evidence": ""}
     links = _expand_links(cap)
@@ -177,14 +263,17 @@ def review(post, policy, known):
     v["competitors"] = [c for c in (v.get("competitors") or [])
                         if str(c).strip() and str(c).strip().lower() not in
                         ("none", "webull", "วีบลู", "-", "n/a")]
-    hay = _norm((post.get("caption") or "") + " "
+    hay = _norm((post.get("caption") or "") + " " + full_tr + " "
                 + " ".join(post.get("hashtags") or []) + " "
                 + (post.get("post_url") or "") + " "
                 + " ".join(f for _, f in links))
-    named = v["competitors"]
+    named = [c for c in v["competitors"] if not _is_client(c)]
+    if len(named) < len(v["competitors"]) or _CLIENT.search(cap + " " + full_tr):
+        v["mentions_webull"] = True
     v["competitors"] = [c for c in named if _grounded(c, hay)]
     dropped = [c for c in named if c not in v["competitors"]]
-    v["evidence"] = _quote(v.get("evidence"), post.get("caption"), v["competitors"])
+    v["evidence"] = (_quote(v.get("evidence"), post.get("caption"), v["competitors"])
+                     or _quote(v.get("evidence"), full_tr, v["competitors"]))
     lvl = v.get("level") or "none"
     # Nothing named in the post -> can't be "urgent" (at most "watch").
     if lvl == "urgent" and not v["competitors"]:
@@ -207,14 +296,20 @@ def review(post, policy, known):
             v["reason"] = (v.get("reason") or "") + " · (รอบสองไม่ยืนยัน: " + (c.get("reason") or "") + ")"
     v["level"] = lvl
     why = (v.get("why_short") or "").strip()
+    if len(why) > 90:   # the model often writes a whole sentence; keep it short
+        cut = why[:90]
+        why = (cut.rsplit(" ", 1)[0] if " " in cut[40:] else cut) + "…"
     if lvl != "none" and v["competitors"]:
         locs = []
         for c in v["competitors"][:3]:
             w = _where(c, post, links)
+            if w == "ข้อความ" and _norm(c) not in _norm(cap) and full_tr:
+                w = "เสียงพูดในคลิป"
             if w not in locs:
                 locs.append(w)
         why = (why + " · " if why else "") + "พบใน" + ", ".join(locs)
     v["why"] = why[:200]
+    v["has_transcript"] = bool(full_tr)
     return v
 
 
