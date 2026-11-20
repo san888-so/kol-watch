@@ -149,7 +149,8 @@ def _fb_extra_text(r):
 def _tiktok_fallback(prov, user, limit):
     raw = prov._call_actor_sync(
         "igview-owner~tiktok-profile-video-scraper",
-        {"usernames": [user], "maxVideos": limit + 3})
+        # $0.02/item + $0.02/start (vs apidojo $0.0003) — keep it small.
+        {"usernames": [user], "maxVideos": limit + 1})
     out = []
     for r in raw:
         vid = str(r.get("video_id") or "")
