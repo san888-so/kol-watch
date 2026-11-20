@@ -108,6 +108,15 @@ def _skip_channels():
     return out
 
 
+def _exclusive_override():
+    import json
+    try:
+        v = json.loads(db.get_setting("exclusive_override", "[]") or "[]")
+        return set(v) if isinstance(v, list) else set()
+    except Exception:
+        return set()
+
+
 def sync_from_sheet(sheet_id, gid=None):
     """Read sheet -> merge into kol/channel (non-destructive).
 
@@ -142,6 +151,10 @@ def sync_from_sheet(sheet_id, gid=None):
         excl = _clean(r[COL_EXCL]) if len(r) > COL_EXCL else ""
         remark = _clean(r[COL_REMARK]) if len(r) > COL_REMARK else ""
         is_cancelled = CANCEL_MARK in remark
+        # KOLs the team confirmed Exclusive (tracking sheet) even if the
+        # master sheet still says otherwise — survives every re-sync.
+        if name in _exclusive_override():
+            excl = "Exclusive (All Compet)"
         kol_id = db.upsert_kol(name, tier, excl, active=0 if is_cancelled else 1)
         seen_names.add(name)
         kol_count += 1
