@@ -67,16 +67,23 @@ def get_unbranded_watchlist():
 # Override without a deploy via the `watchlist_promo_signals` setting
 # (JSON list of words; replaces this default list).
 _DEFAULT_PROMO_SIGNALS = [
-    "สมัคร", "เปิดบัญชี", "เปิดพอร์ต", "โค้ด", "รหัสแนะนำ", "ลิงก์", "ลิ้งก์",
-    "ลิงค์", "ลิ้งค์", "ในไบโอ", "ค่าคอม", "ฟรีค่าธรรมเนียม", "ไม่มีค่าธรรมเนียม",
-    "โปรโมชั่น", "โปรโมชัน", "รับหุ้นฟรี", "แจกหุ้น", "สปอนเซอร์", "พาร์ทเนอร์",
-    "โหลดแอป", "ดาวน์โหลดแอป", "แอปเทรด", "แอพเทรด",
-    "sign up", "signup", "referral", "promo", "link in bio", "sponsored",
-    "#ad", "open account", "download",
+    # Call-to-action phrases, not bare words: articles say "เปิดบัญชี",
+    # "สมัคร", "โค้ด" (เขียนโค้ด) or "ลิงก์" all the time. Thai phrases are
+    # matched with spaces removed, so "เปิดพอร์ต กับ" also counts.
+    "สมัครได้ที่", "สมัครผ่าน", "สมัครเลย", "สมัครตอนนี้", "สมัครใช้งาน",
+    "สมัครฟรี", "ลิงก์สมัคร", "ลิ้งก์สมัคร", "ลิงค์สมัคร", "ลิ้งค์สมัคร",
+    "เปิดบัญชีได้ที่", "เปิดบัญชีผ่าน", "เปิดบัญชีกับ", "เปิดบัญชีฟรี",
+    "เปิดบัญชีเลย", "เปิดพอร์ตได้ที่", "เปิดพอร์ตผ่าน", "เปิดพอร์ตกับ",
+    "เปิดพอร์ตเทรดกับ", "เปิดพอร์ตฟรี", "เปิดพอร์ตเลย",
+    "ใส่โค้ด", "กรอกโค้ด", "โค้ดส่วนลด", "โค้ดแนะนำ", "รหัสแนะนำ",
+    "ลิงก์ในไบโอ", "ลิ้งก์ในไบโอ", "ลิงค์ในไบโอ", "ลิ้งค์ในไบโอ",
+    "ค่าคอม0", "ฟรีค่าคอม", "ค่าคอมฟรี", "รับหุ้นฟรี", "แจกหุ้น",
+    "sign up", "signup", "referral", "promo code", "link in bio",
+    "sponsored", "#ad", "open account", "open an account",
 ]
 _PROMO_LINK = re.compile(
     r"(bit\.ly|s\.id/|linktr\.ee|onelink|app\.link|page\.link|tinyurl|cutt\.ly|"
-    r"shorturl|t\.co/|lin\.ee|apps\.apple\.com|play\.google\.com|/ref=|"
+    r"shorturl|lin\.ee|apps\.apple\.com|play\.google\.com|/ref=|"
     r"[?&](ref|referral|invite|inviter|code|promo)=)", re.I)
 
 
@@ -97,8 +104,16 @@ def promo_signal(caption, hashtags):
     if m:
         return m.group(0)
     text = _norm(raw)
+    text_ns = text.replace(" ", "")
     for w in _promo_signals():
-        if _norm(w) and _norm(w) in text:
+        v = _norm(w)
+        if not v:
+            continue
+        if _THAI.search(v):
+            if v.replace(" ", "") in text_ns:
+                return w
+        elif re.search(r"(?<![a-z0-9])" + re.escape(v) + r"(?![a-z0-9])",
+                       text):  # whole word: #ad must not match #adrs
             return w
     return ""
 
