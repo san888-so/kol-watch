@@ -60,6 +60,64 @@ def get_unbranded_watchlist():
         return {}
 
 
+# A broad topic word (หุ้นนอก ...) only counts when the post also looks like
+# it is selling something: sign-up / referral / promo wording, or a short or
+# app-store link. Plain articles about US stocks carry none of these, so they
+# no longer alert (the AI reviewer still reads every Exclusive post).
+# Override without a deploy via the `watchlist_promo_signals` setting
+# (JSON list of words; replaces this default list).
+_DEFAULT_PROMO_SIGNALS = [
+    # Call-to-action phrases, not bare words: articles say "เปิดบัญชี",
+    # "สมัคร", "โค้ด" (เขียนโค้ด) or "ลิงก์" all the time. Thai phrases are
+    # matched with spaces removed, so "เปิดพอร์ต กับ" also counts.
+    "สมัครได้ที่", "สมัครผ่าน", "สมัครเลย", "สมัครตอนนี้", "สมัครใช้งาน",
+    "สมัครฟรี", "ลิงก์สมัคร", "ลิ้งก์สมัคร", "ลิงค์สมัคร", "ลิ้งค์สมัคร",
+    "เปิดบัญชีได้ที่", "เปิดบัญชีผ่าน", "เปิดบัญชีกับ", "เปิดบัญชีฟรี",
+    "เปิดบัญชีเลย", "เปิดพอร์ตได้ที่", "เปิดพอร์ตผ่าน", "เปิดพอร์ตกับ",
+    "เปิดพอร์ตเทรดกับ", "เปิดพอร์ตฟรี", "เปิดพอร์ตเลย",
+    "ใส่โค้ด", "กรอกโค้ด", "โค้ดส่วนลด", "โค้ดแนะนำ", "รหัสแนะนำ",
+    "ลิงก์ในไบโอ", "ลิ้งก์ในไบโอ", "ลิงค์ในไบโอ", "ลิ้งค์ในไบโอ",
+    "ค่าคอม0", "ฟรีค่าคอม", "ค่าคอมฟรี", "รับหุ้นฟรี", "แจกหุ้น",
+    "sign up", "signup", "referral", "promo code", "link in bio",
+    "sponsored", "#ad", "open account", "open an account",
+]
+_PROMO_LINK = re.compile(
+    r"(bit\.ly|s\.id/|linktr\.ee|onelink|app\.link|page\.link|tinyurl|cutt\.ly|"
+    r"shorturl|lin\.ee|apps\.apple\.com|play\.google\.com|/ref=|"
+    r"[?&](ref|referral|invite|inviter|code|promo)=)", re.I)
+
+
+def _promo_signals():
+    try:
+        v = json.loads(db.get_setting("watchlist_promo_signals", "") or "null")
+        if isinstance(v, list) and any(isinstance(w, str) and w.strip() for w in v):
+            return [w for w in v if isinstance(w, str) and w.strip()]
+    except Exception:
+        pass
+    return list(_DEFAULT_PROMO_SIGNALS)
+
+
+def promo_signal(caption, hashtags):
+    """Return the first sign-up/referral/promo signal found, or ''."""
+    raw = "  ".join([caption or ""] + [("#" + h) for h in (hashtags or [])])
+    m = _PROMO_LINK.search(raw)
+    if m:
+        return m.group(0)
+    text = _norm(raw)
+    text_ns = text.replace(" ", "")
+    for w in _promo_signals():
+        v = _norm(w)
+        if not v:
+            continue
+        if _THAI.search(v):
+            if v.replace(" ", "") in text_ns:
+                return w
+        elif re.search(r"(?<![a-z0-9])" + re.escape(v) + r"(?![a-z0-9])",
+                       text):  # whole word: #ad must not match #adrs
+            return w
+    return ""
+
+
 def get_client_brands():
     """Brands belonging to *our client* — surfaced in a separate report tab
     (not a competitor alert). Default Webull/วีบลู; editable in Settings."""

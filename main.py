@@ -340,7 +340,7 @@ def api_settings(payload):
               "line_mode", "posts_per_check", "watchlist",
               "enable_bd_fallback", "scan_platforms",
               "client_brands", "brand_kols_per_bubble", "watchlist_exclude",
-              "watchlist_unbranded",
+              "watchlist_unbranded", "watchlist_promo_signals",
               "brand_digest_max_age_days",
               "dca_report_enabled", "dca_report_time", "dca_sheet_id",
               "dca_campaigns", "dca_links",
