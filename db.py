@@ -187,6 +187,13 @@ def init():
         ai_cols = {r["name"] for r in c.execute("PRAGMA table_info(ai_review)")}
         if "why" not in ai_cols:
             c.execute("ALTER TABLE ai_review ADD COLUMN why TEXT")
+        # Team verdict from the LINE card buttons (คู่แข่ง / ผ่าน).
+        for col in ("verdict", "verdict_by", "verdict_at"):
+            if col not in hit_cols:
+                c.execute(f"ALTER TABLE hit ADD COLUMN {col} TEXT")
+        for col in ("human_verdict", "human_by", "human_at"):
+            if col not in ai_cols:
+                c.execute(f"ALTER TABLE ai_review ADD COLUMN {col} TEXT")
         for k, v in DEFAULT_SETTINGS.items():
             c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
 
@@ -435,6 +442,40 @@ def unnotified_hits():
 def mark_notified(hit_id):
     with _lock, _conn() as c:
         c.execute("UPDATE hit SET notified=1 WHERE id=?", (hit_id,))
+
+
+def set_verdict(hit_ids, verdict, by):
+    """Team verdict from a LINE card button. verdict: 'competitor' | 'pass'.
+    Returns {kol, platform, prev: {verdict, by, at} | None} or None if the
+    hits don't exist. 'pass' also files the hit as ignored; the AI review of
+    the same post gets the human verdict too (training signal for later)."""
+    ids = [int(x) for x in hit_ids if str(x).isdigit()]
+    if not ids:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    marks = ",".join("?" * len(ids))
+    with _lock, _conn() as c:
+        rows = c.execute(f"SELECT * FROM hit WHERE id IN ({marks})",
+                         ids).fetchall()
+        if not rows:
+            return None
+        first = dict(rows[0])
+        prev = None
+        if first.get("verdict"):
+            prev = {"verdict": first["verdict"], "by": first.get("verdict_by"),
+                    "at": first.get("verdict_at")}
+        status_sql = ("handle_status='ignored'" if verdict == "pass" else
+                      "handle_status=CASE WHEN handle_status='ignored' "
+                      "THEN 'new' ELSE handle_status END")
+        c.execute(f"""UPDATE hit SET verdict=?, verdict_by=?, verdict_at=?,
+                      {status_sql} WHERE id IN ({marks})""",
+                  [verdict, by, now] + ids)
+        c.execute("""UPDATE ai_review SET human_verdict=?, human_by=?, human_at=?
+                     WHERE seen_post_id IN (SELECT id FROM seen_post
+                       WHERE channel_id=? AND post_id=?)""",
+                  (verdict, by, now, first["channel_id"], first["post_id"]))
+        return {"kol": first["kol_name"], "platform": first["platform"],
+                "keyword": first["matched_keyword"], "prev": prev}
 
 
 def set_hit_status(hit_id, status):

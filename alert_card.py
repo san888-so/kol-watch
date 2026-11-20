@@ -61,7 +61,7 @@ def _contract(post):
 
 
 def build(post, *, source, competitors=(), words=(), why="", evidence="",
-          foreign=False, broad=False, model=""):
+          foreign=False, broad=False, model="", hit_ids=()):
     """Return (altText, bubble).
 
     post: kol, platform, post_url, posted_at, scanned_at, exclusivity
@@ -124,9 +124,22 @@ def build(post, *, source, competitors=(), words=(), why="", evidence="",
                        "height": "sm",
                        "action": {"type": "uri", "label": "เปิดโพสต์",
                                   "uri": url[:1000]}})
+    ids = ",".join(str(i) for i in hit_ids if i)
+    if ids:
+        # Team verdict buttons -> LINE postback -> /webhook (main.py)
+        footer.append({"type": "box", "layout": "horizontal", "spacing": "sm",
+                       "contents": [
+            {"type": "button", "style": "secondary", "height": "sm",
+             "action": {"type": "postback", "label": "🚨 คู่แข่ง",
+                        "data": f"kw=v&v=competitor&h={ids}",
+                        "displayText": "🚨 ยืนยัน: โพสต์คู่แข่ง"}},
+            {"type": "button", "style": "secondary", "height": "sm",
+             "action": {"type": "postback", "label": "✓ ผ่าน",
+                        "data": f"kw=v&v=pass&h={ids}",
+                        "displayText": "✓ ผ่าน: ไม่ใช่คู่แข่ง"}}]})
     note = (f"AI อ่านโพสต์ ({model or 'sanmini'})" if source == "ai"
             else "คำค้นตรงกับรายชื่อในหน้าเว็บ")
-    footer.append(_txt(f"{note} · เช็กโพสต์ก่อนแจ้ง KOL", size="xxs",
+    footer.append(_txt(f"{note} · เปิดดูโพสต์ แล้วกดตัดสิน", size="xxs",
                        color="#98A2B3", align="center", margin="sm"))
 
     bubble = {

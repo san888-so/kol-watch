@@ -115,7 +115,8 @@ def save(payload):
                              post.get("posted_at", ""), label[:120],
                              str(r.get("evidence") or r.get("reason") or "")[:300],
                              kind="competitor")
-            ok, _ = notify_line.push_flex(*alert_flex(post, comps, r, model))
+            ok, _ = notify_line.push_flex(*alert_flex(post, comps, r, model,
+                                                      hit_ids=[hid]))
             if ok:
                 db.mark_ai_alerted(sid)
                 if hid:
@@ -124,14 +125,15 @@ def save(payload):
     return out
 
 
-def alert_flex(post, comps, r, model):
+def alert_flex(post, comps, r, model, hit_ids=()):
     """Red 'urgent' card (shared layout with keyword alerts)."""
     why = (r.get("why") or r.get("why_short") or "").strip() \
         or (r.get("reason") or "")[:120]
     return alert_card.build(
         post, source="ai", competitors=comps, why=why,
         evidence=r.get("evidence") or "",
-        foreign=bool(r.get("foreign_stock_trading")), model=model)
+        foreign=bool(r.get("foreign_stock_trading")), model=model,
+        hit_ids=hit_ids)
 
 
 def status():

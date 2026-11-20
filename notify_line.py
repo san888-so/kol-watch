@@ -115,6 +115,55 @@ def _send(messages):
         return False, err
 
 
+def verify_signature(body_bytes, signature):
+    """X-Line-Signature check (HMAC-SHA256 with the channel secret)."""
+    import base64, hashlib, hmac
+    secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+    if not secret or not signature:
+        return False
+    mac = hmac.new(secret.encode(), body_bytes, hashlib.sha256).digest()
+    return hmac.compare_digest(base64.b64encode(mac).decode(), signature)
+
+
+_NAMES = {}
+
+
+def display_name(user_id):
+    """LINE display name of a friend of the OA (cached in memory)."""
+    if not user_id:
+        return "ไม่ทราบชื่อ"
+    if user_id in _NAMES:
+        return _NAMES[user_id]
+    name = user_id[-6:]
+    try:
+        req = Request(f"https://api.line.me/v2/bot/profile/{user_id}",
+                      headers={"Authorization": f"Bearer {_get_token()}"})
+        with urlopen(req, timeout=10) as r:
+            name = json.loads(r.read().decode("utf-8")).get("displayName") or name
+            _NAMES[user_id] = name
+    except Exception:
+        pass
+    return name
+
+
+def reply_text(reply_token, text):
+    """Reply to a webhook event (free — doesn't count toward the quota)."""
+    if not reply_token:
+        return False
+    body = json.dumps({"replyToken": reply_token,
+                       "messages": [{"type": "text", "text": text[:4900]}]}
+                      ).encode("utf-8")
+    req = Request("https://api.line.me/v2/bot/message/reply", data=body,
+                  method="POST", headers={
+                      "Content-Type": "application/json",
+                      "Authorization": f"Bearer {_get_token()}"})
+    try:
+        with urlopen(req, timeout=10) as r:
+            return 200 <= r.status < 300
+    except Exception:
+        return False
+
+
 def push_hit(hit):
     text = (
         "🚨 พบโพสต์ถึงคู่แข่ง\n"

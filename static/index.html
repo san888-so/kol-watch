@@ -98,7 +98,7 @@
   <section>
     <h2>⚠️ โพสต์ที่เจอคำคู่แข่ง</h2>
     <table id="hits"><thead><tr>
-      <th>เวลา</th><th>KOL</th><th>แพลตฟอร์ม</th><th>คำ</th><th>ข้อความ</th><th>ลิงก์</th><th>สถานะ</th>
+      <th>เวลา</th><th>KOL</th><th>แพลตฟอร์ม</th><th>คำ</th><th>ข้อความ</th><th>ลิงก์</th><th>ทีมตัดสิน</th><th>สถานะ</th>
     </tr></thead><tbody></tbody></table>
     <div class="muted" id="hitsEmpty" style="display:none">ยังไม่พบโพสต์ที่ผิด 🎉</div>
   </section>
@@ -201,8 +201,9 @@ async function refresh(){
      <td><span class="badge">${esc(h.matched_keyword)}</span></td>
      <td>${esc((h.snippet||"").slice(0,90))}</td>
      <td><a href="${esc(h.post_url)}" target="_blank">เปิด</a></td>
+     <td>${h.verdict?`<span class="badge" style="${h.verdict==='competitor'?'background:#FEE4E2;color:#B42318':'background:#ECFDF3;color:#067647'}">${h.verdict==='competitor'?'🚨 คู่แข่ง':'✓ ผ่าน'}</span><div class="muted" style="font-size:11px">${esc(h.verdict_by||'')} · ${fmtTH(h.verdict_at)}</div>`:'<span class="muted">ยังไม่กด</span>'}</td>
      <td><select data-id="${h.id}">
-       ${["new","contacted","removed"].map(s=>`<option value="${s}" ${h.handle_status===s?"selected":""}>${s}</option>`).join("")}
+       ${["new","contacted","removed","ignored"].map(s=>`<option value="${s}" ${h.handle_status===s?"selected":""}>${s}</option>`).join("")}
      </select></td>`;
     hb.appendChild(tr);
   }

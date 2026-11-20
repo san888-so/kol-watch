@@ -136,7 +136,7 @@ def _build_brand_bubbles(hits):
     return bubbles
 
 
-def _push_keyword_card(ch, p, matches, unbranded_wl):
+def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
     """Send one alert card for a post's keyword matches (same layout as the
     AI card). Broad topic words alone (หุ้นนอก ...) get the orange
     'เฝ้าระวัง' card; a competitor name gets the red 'ด่วน' card."""
@@ -159,7 +159,8 @@ def _push_keyword_card(ch, p, matches, unbranded_wl):
     alt, bubble = alert_card.build(
         post, source="keyword",
         competitors=[f["keyword"] for f in named], words=words, why=why,
-        evidence=matches[0].get("snippet", ""), broad=broad)
+        evidence=matches[0].get("snippet", ""), broad=broad,
+        hit_ids=hit_ids)
     ok, _ = notify_line.push_flex(alt, bubble)
     if not ok:  # Flex refused for any reason -> fall back to the old text
         f = matches[0]
@@ -263,7 +264,8 @@ def run_once(triggered_by="manual"):
                         new_hits.append((hid, f))
                 if new_hits:
                     ok = _push_keyword_card(ch, p, [f for _, f in new_hits],
-                                            unbranded_wl)
+                                            unbranded_wl,
+                                            [h for h, _ in new_hits])
                     if ok:
                         for hid, _ in new_hits:
                             db.mark_notified(hid)

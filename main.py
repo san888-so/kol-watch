@@ -15,6 +15,7 @@ import db
 import registry
 import scheduler
 import ai_review
+import notify_line
 
 # Railway injects PORT; locally use KOLWATCH_PORT (default 5070).
 PORT = int(os.environ.get("PORT") or os.environ.get("KOLWATCH_PORT") or "5070")
@@ -277,10 +278,46 @@ def api_brand_backfill():
     return {"ok": True, "scanned": scanned, "added": added}, 200
 
 
+_VERDICT_TH = {"competitor": "🚨 คู่แข่ง", "pass": "✓ ผ่าน"}
+
+
+def _line_postback(ev):
+    """คู่แข่ง / ผ่าน button on an alert card (alert_card.py)."""
+    q = parse_qs((ev.get("postback") or {}).get("data") or "")
+    if (q.get("kw") or [""])[0] != "v":
+        return
+    verdict = (q.get("v") or [""])[0]
+    if verdict not in _VERDICT_TH:
+        return
+    ids = [x for x in (q.get("h") or [""])[0].split(",") if x.strip()]
+    uid = (ev.get("source") or {}).get("userId") or ""
+    who = notify_line.display_name(uid)
+    res = db.set_verdict(ids, verdict, who)
+    if not res:
+        notify_line.reply_text(ev.get("replyToken"),
+                               "ไม่เจอรายการนี้ในระบบแล้ว")
+        return
+    msg = (f"บันทึกแล้ว: {res['kol']} ({res['platform']}) = "
+           f"{_VERDICT_TH[verdict]} · โดย {who}")
+    p = res.get("prev")
+    if p and (p.get("verdict") != verdict or p.get("by") != who):
+        when = ""
+        try:
+            when = scheduler.datetime.fromisoformat(p["at"]).astimezone(
+                scheduler.TH_TZ).strftime("%d/%m %H:%M")
+        except Exception:
+            pass
+        msg += (f"\n(ก่อนหน้านี้ {p.get('by') or '-'} กด "
+                f"{_VERDICT_TH.get(p.get('verdict'), p.get('verdict'))} {when})")
+    if verdict == "competitor":
+        msg += "\nรายการอยู่ในหน้าเว็บ แท็บเจอคำคู่แข่ง"
+    notify_line.reply_text(ev.get("replyToken"), msg)
+
+
 def api_hit_status(payload):
     hid = payload.get("id")
     status = payload.get("status")
-    if not hid or status not in ("new", "contacted", "removed"):
+    if not hid or status not in ("new", "contacted", "removed", "ignored"):
         return {"error": "id + valid status required"}, 400
     db.set_hit_status(int(hid), status)
     return {"ok": True}, 200
@@ -476,9 +513,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/webhook":
             try:
                 n = int(self.headers.get("Content-Length", "0"))
-                body = self.rfile.read(n).decode("utf-8") if n else ""
+                raw = self.rfile.read(n) if n else b""
+                body = raw.decode("utf-8") if raw else ""
                 data = json.loads(body) if body else {}
+                signed = notify_line.verify_signature(
+                    raw, self.headers.get("X-Line-Signature", ""))
                 for ev in (data.get("events") or []):
+                    if ev.get("type") == "postback" and signed:
+                        _line_postback(ev)
+                        continue
                     src = ev.get("source") or {}
                     st = src.get("type") or ""
                     sid = src.get(f"{st}Id") if st else None
