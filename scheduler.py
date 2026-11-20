@@ -148,8 +148,11 @@ def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
         if w not in words:
             words.append(w)
     if broad:
-        why = ("เจอคำกว้างในรายการเฝ้าระวัง และโพสต์ไม่มีชื่อ Webull · "
-               "ยังไม่รู้ว่าชวนใช้เจ้าไหน AI จะอ่านซ้ำ")
+        sig = next((f.get("promo_signal") for f in matches
+                    if f.get("promo_signal")), "")
+        why = ("เจอคำกว้างในรายการเฝ้าระวัง + คำชวนสมัคร/ลิงก์"
+               + (f" ({sig})" if sig else "")
+               + " และโพสต์ไม่มีชื่อ Webull · ยังไม่รู้ว่าชวนใช้เจ้าไหน AI จะอ่านซ้ำ")
     else:
         why = "ชื่อคู่แข่งในรายการตรงกับแคปชัน/แฮชแท็กของโพสต์"
     post = {"kol": ch["kol_name"], "platform": ch["platform"],
@@ -249,10 +252,19 @@ def run_once(triggered_by="manual", only_before=None):
                 # that do NOT mention the client — a Webull-sponsored post
                 # about US stocks is exactly what we paid for. Skipped when a
                 # named competitor already matched (one alert per post is enough).
+                # They also need a sign-up/referral/promo signal: a plain
+                # article about US stocks is not an alert (the AI reviewer
+                # still reads it, so a disguised ad is not lost).
                 if is_excl and unbranded_wl and not bf and not found:
-                    found += matcher.scan(p.get("caption", ""),
-                                          p.get("hashtags", []),
-                                          watchlist=unbranded_wl)
+                    broad = matcher.scan(p.get("caption", ""),
+                                         p.get("hashtags", []),
+                                         watchlist=unbranded_wl)
+                    sig = matcher.promo_signal(p.get("caption", ""),
+                                               p.get("hashtags", [])) if broad else ""
+                    if sig:
+                        for f in broad:
+                            f["promo_signal"] = sig
+                        found += broad
                 db.mark_seen(ch["id"], pid, p.get("url", ""),
                              p.get("posted_at", ""),
                              caption=p.get("caption", ""),

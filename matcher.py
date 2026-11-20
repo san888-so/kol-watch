@@ -60,6 +60,49 @@ def get_unbranded_watchlist():
         return {}
 
 
+# A broad topic word (หุ้นนอก ...) only counts when the post also looks like
+# it is selling something: sign-up / referral / promo wording, or a short or
+# app-store link. Plain articles about US stocks carry none of these, so they
+# no longer alert (the AI reviewer still reads every Exclusive post).
+# Override without a deploy via the `watchlist_promo_signals` setting
+# (JSON list of words; replaces this default list).
+_DEFAULT_PROMO_SIGNALS = [
+    "สมัคร", "เปิดบัญชี", "เปิดพอร์ต", "โค้ด", "รหัสแนะนำ", "ลิงก์", "ลิ้งก์",
+    "ลิงค์", "ลิ้งค์", "ในไบโอ", "ค่าคอม", "ฟรีค่าธรรมเนียม", "ไม่มีค่าธรรมเนียม",
+    "โปรโมชั่น", "โปรโมชัน", "รับหุ้นฟรี", "แจกหุ้น", "สปอนเซอร์", "พาร์ทเนอร์",
+    "โหลดแอป", "ดาวน์โหลดแอป", "แอปเทรด", "แอพเทรด",
+    "sign up", "signup", "referral", "promo", "link in bio", "sponsored",
+    "#ad", "open account", "download",
+]
+_PROMO_LINK = re.compile(
+    r"(bit\.ly|s\.id/|linktr\.ee|onelink|app\.link|page\.link|tinyurl|cutt\.ly|"
+    r"shorturl|t\.co/|lin\.ee|apps\.apple\.com|play\.google\.com|/ref=|"
+    r"[?&](ref|referral|invite|inviter|code|promo)=)", re.I)
+
+
+def _promo_signals():
+    try:
+        v = json.loads(db.get_setting("watchlist_promo_signals", "") or "null")
+        if isinstance(v, list) and any(isinstance(w, str) and w.strip() for w in v):
+            return [w for w in v if isinstance(w, str) and w.strip()]
+    except Exception:
+        pass
+    return list(_DEFAULT_PROMO_SIGNALS)
+
+
+def promo_signal(caption, hashtags):
+    """Return the first sign-up/referral/promo signal found, or ''."""
+    raw = "  ".join([caption or ""] + [("#" + h) for h in (hashtags or [])])
+    m = _PROMO_LINK.search(raw)
+    if m:
+        return m.group(0)
+    text = _norm(raw)
+    for w in _promo_signals():
+        if _norm(w) and _norm(w) in text:
+            return w
+    return ""
+
+
 def get_client_brands():
     """Brands belonging to *our client* — surfaced in a separate report tab
     (not a competitor alert). Default Webull/วีบลู; editable in Settings."""
