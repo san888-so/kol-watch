@@ -174,7 +174,7 @@ def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
     return ok
 
 
-def run_once(triggered_by="manual", only_before=None):
+def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
     if PROGRESS["running"]:
         return {"error": "already running"}
     PROGRESS.update(running=True, done=0, current="", summary="")
@@ -187,6 +187,9 @@ def run_once(triggered_by="manual", only_before=None):
                                "youtube,lemon8,tiktok,instagram,facebook,x")
                 or "").split(",") if p.strip()}
     channels = [c for c in db.list_channels() if c["platform"] in enabled]
+    if exclusive_only:  # "เฝ้าเข้ม" hourly round: Exclusive KOLs only
+        channels = [c for c in channels
+                    if "non" not in (c.get("kol_exclusivity") or "").lower()]
     if only_before:  # resuming a scan a restart cut off: skip channels done
         channels = [c for c in channels
                     if not c.get("last_checked") or c["last_checked"] < only_before]
@@ -194,6 +197,7 @@ def run_once(triggered_by="manual", only_before=None):
     # Marker so a restart (deploy, crash) mid-scan can resume on boot.
     run_started = only_before or datetime.now(timezone.utc).isoformat()
     db.set_setting("scan_running_since", run_started)
+    db.set_setting("scan_running_excl", "1" if exclusive_only else "")
     try:
         limit = int(db.get_setting("posts_per_check", "3") or "3")
     except ValueError:
@@ -366,6 +370,10 @@ def run_once(triggered_by="manual", only_before=None):
         except Exception:
             traceback.print_exc()
         PROGRESS["summary"] = summary
+        # Hourly Exclusive rounds: no digest unless something was found —
+        # alerts already went out one card per post; 24 digests/day is spam.
+        if exclusive_only and not hits:
+            stopped = True  # (reuse: suppresses the digest below)
         if not stopped:  # don't LINE-spam a digest on a manual stop
             notify_line.digest([summary])
         db.set_setting("scan_running_since", "")  # finished (or stopped)
@@ -466,7 +474,9 @@ def scheduler_thread(stop_event):
                 print(f"[scan] resuming scan cut off by restart (since {since})",
                       flush=True)
                 run_once(triggered_by="ต่อรอบที่ค้างหลังรีสตาร์ท",
-                         only_before=since)
+                         only_before=since,
+                         exclusive_only=(db.get_setting("scan_running_excl", "")
+                                         or "") == "1")
             else:
                 db.set_setting("scan_running_since", "")
     except Exception:
@@ -496,6 +506,21 @@ def scheduler_thread(stop_event):
                         last_fired[hhmm] = today
                         _save_fired("sched_watch_fired", last_fired)
                         run_once(triggered_by=f"auto {hhmm} TH")
+
+                # "เฝ้าเข้ม" mode: Exclusive KOLs also every hour in between
+                # the full scans, until excl_hourly_until (then auto-off).
+                until = db.get_setting("excl_hourly_until", "") or ""
+                if until and now.isoformat() < until:
+                    excl_fired = _load_fired("sched_excl_fired")
+                    for h in range(24):
+                        hhmm = f"{h:02d}:00"
+                        if hhmm in times:
+                            continue  # full scan already covers this hour
+                        if _due(hhmm, excl_fired):
+                            excl_fired[hhmm] = today
+                            _save_fired("sched_excl_fired", excl_fired)
+                            run_once(triggered_by=f"เฝ้าเข้ม Exclusive {hhmm}",
+                                     exclusive_only=True)
 
             # Daily DCA content-status report (independent of the keyword watch).
             # Uses a 1-hour catch-up window so a brief restart near the target
