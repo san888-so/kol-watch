@@ -15,6 +15,7 @@ The Exclusive column value drives competitor-scan eligibility:
   "Exclusive (All Compet)"   -> scan for competitors AND brand
   "Non - Exclusive"          -> scan for brand only
 """
+import json
 import os
 import sys
 import re
@@ -87,6 +88,26 @@ def _host_ok(platform, url):
     return any(h in u for h in PLATFORM_HOST[platform])
 
 
+def _skip_channels():
+    """Channels the team does not want checked, kept out of the scan without
+    deleting the link from the Sheet (the team still uses those links).
+    Setting `skip_channels`: JSON {"KOL name as in the Sheet": ["lemon8",
+    "instagram", ...]}. A skipped link is switched off on the next sync."""
+    try:
+        raw = json.loads(db.get_setting("skip_channels", "{}") or "{}")
+    except Exception:
+        return {}
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if isinstance(v, str):
+                v = [v]
+            if isinstance(k, str) and isinstance(v, list):
+                out[" ".join(k.split()).lower()] = {
+                    str(x).strip().lower() for x in v if str(x).strip()}
+    return out
+
+
 def sync_from_sheet(sheet_id, gid=None):
     """Read sheet -> merge into kol/channel (non-destructive).
 
@@ -96,6 +117,8 @@ def sync_from_sheet(sheet_id, gid=None):
     """
     gid = gid or db.get_setting("sheet_gid", "401523688") or "0"
     rows = gsync.read_csv(sheet_id, gid=gid)
+    skip = _skip_channels()
+    skipped = 0
     db.clear_unresolved()
 
     existing = {(c["kol_id"], c["platform"], c["profile_url"])
@@ -126,9 +149,13 @@ def sync_from_sheet(sheet_id, gid=None):
             cancelled += 1
             continue  # keep its old channels, but don't add or scan any
 
+        skip_here = skip.get(" ".join(name.split()).lower(), set())
         for platform, col in PLATFORM_COLS.items():
             raw = _clean(r[col]) if len(r) > col else ""
             if not raw or raw == "-":
+                continue
+            if platform in skip_here:  # team said: don't check this one
+                skipped += 1
                 continue
             url = _extract_url(raw)
             if not url:
@@ -165,4 +192,5 @@ def sync_from_sheet(sheet_id, gid=None):
         "cancelled": cancelled,
         "removed": len(removed),
         "old_links_off": old_links,
+        "skipped_by_setting": skipped,
     }
