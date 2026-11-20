@@ -545,7 +545,7 @@ def ai_post(seen_post_id):
         r = c.execute("""
             SELECT s.id AS seen_post_id, s.channel_id, s.post_id, s.post_url,
                    s.posted_at, s.scanned_at, s.caption, ch.platform,
-                   k.name AS kol
+                   k.name AS kol, k.exclusivity
             FROM seen_post s JOIN channel ch ON ch.id = s.channel_id
             JOIN kol k ON k.id = ch.kol_id WHERE s.id=?""",
             (seen_post_id,)).fetchone()

@@ -19,6 +19,7 @@ except Exception:  # pragma: no cover  — fall back to a fixed +07:00 offset
 import db
 import matcher
 import notify_line
+import alert_card
 import collectors
 import dca_report
 
@@ -135,6 +136,40 @@ def _build_brand_bubbles(hits):
     return bubbles
 
 
+def _push_keyword_card(ch, p, matches, unbranded_wl):
+    """Send one alert card for a post's keyword matches (same layout as the
+    AI card). Broad topic words alone (หุ้นนอก ...) get the orange
+    'เฝ้าระวัง' card; a competitor name gets the red 'ด่วน' card."""
+    named = [f for f in matches if f["keyword"] not in (unbranded_wl or {})]
+    broad = not named
+    words = []
+    for f in matches:
+        w = f.get("variant") or f["keyword"]
+        if w not in words:
+            words.append(w)
+    if broad:
+        why = ("เจอคำกว้างในรายการเฝ้าระวัง และโพสต์ไม่มีชื่อ Webull · "
+               "ยังไม่รู้ว่าชวนใช้เจ้าไหน AI จะอ่านซ้ำ")
+    else:
+        why = "ชื่อคู่แข่งในรายการตรงกับแคปชัน/แฮชแท็กของโพสต์"
+    post = {"kol": ch["kol_name"], "platform": ch["platform"],
+            "post_url": p.get("url", ""), "posted_at": p.get("posted_at", ""),
+            "scanned_at": datetime.now(timezone.utc).isoformat(),
+            "exclusivity": ch.get("kol_exclusivity", "")}
+    alt, bubble = alert_card.build(
+        post, source="keyword",
+        competitors=[f["keyword"] for f in named], words=words, why=why,
+        evidence=matches[0].get("snippet", ""), broad=broad)
+    ok, _ = notify_line.push_flex(alt, bubble)
+    if not ok:  # Flex refused for any reason -> fall back to the old text
+        f = matches[0]
+        ok, _ = notify_line.push_hit({
+            "kol_name": ch["kol_name"], "platform": ch["platform"],
+            "matched_keyword": ", ".join(m["keyword"] for m in matches),
+            "post_url": p.get("url", ""), "snippet": f.get("snippet", "")})
+    return ok
+
+
 def run_once(triggered_by="manual"):
     if PROGRESS["running"]:
         return {"error": "already running"}
@@ -211,6 +246,7 @@ def run_once(triggered_by="manual"):
                              hashtags=p.get("hashtags", []),
                              matched=bool(found),
                              subtitle_url=p.get("subtitle_url", ""))
+                new_hits = []   # (hit id, match) — one LINE card per post
                 for f in found:
                     # Skip if this post+keyword was already flagged (any
                     # status) — no duplicate alerts, incl. ones marked
@@ -224,13 +260,12 @@ def run_once(triggered_by="manual"):
                         f["keyword"], f["snippet"], kind="competitor")
                     if hid:
                         hits += 1
-                        row = {"kol_name": ch["kol_name"],
-                               "platform": ch["platform"],
-                               "matched_keyword": f["keyword"],
-                               "post_url": p.get("url", ""),
-                               "snippet": f["snippet"]}
-                        ok, _ = notify_line.push_hit(row)
-                        if ok:
+                        new_hits.append((hid, f))
+                if new_hits:
+                    ok = _push_keyword_card(ch, p, [f for _, f in new_hits],
+                                            unbranded_wl)
+                    if ok:
+                        for hid, _ in new_hits:
                             db.mark_notified(hid)
 
                 # ---- Client-brand report (no immediate push; batched at end) ----

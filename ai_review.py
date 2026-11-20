@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 import db
 import matcher
 import notify_line
+import alert_card
 
 try:
     from zoneinfo import ZoneInfo
@@ -23,7 +24,6 @@ except Exception:  # pragma: no cover
     TH_TZ = timezone(timedelta(hours=7))
 
 LEVELS = ("urgent", "watch", "none", "skip")
-RED = "#D92D20"
 
 
 def _now():
@@ -124,86 +124,14 @@ def save(payload):
     return out
 
 
-def _txt(text, **kw):
-    d = {"type": "text", "text": text or "-", "wrap": True}
-    d.update(kw)
-    return d
-
-
 def alert_flex(post, comps, r, model):
-    """Red 'urgent' Flex bubble. Returns (altText, bubble)."""
-    foreign = bool(r.get("foreign_stock_trading"))
-    what = ", ".join(comps) if comps else "สอนเทรดหุ้นต่างประเทศ (ไม่ใช่ Webull)"
-    stamp = datetime.now(TH_TZ).strftime("%d/%m %H:%M")
-    posted = ("โพสต์ " + _posted_th(post["posted_at"])) if post.get("posted_at") \
-        else ("สแกนเจอ " + _posted_th(post.get("scanned_at")))
-    rows = [
-        _txt(post["kol"], weight="bold", size="xl", color="#111111"),
-        _txt(f"{post['platform']} · {posted}", size="sm", color="#667085"),
-        {"type": "separator", "margin": "md"},
-        {"type": "box", "layout": "baseline", "margin": "md", "spacing": "sm",
-         "contents": [_txt("คู่แข่ง", size="sm", color="#667085", flex=2),
-                      _txt(what, size="md", weight="bold", color=RED, flex=6)]},
-    ]
-    if foreign:
-        rows.append({"type": "box", "layout": "baseline", "spacing": "sm",
-                     "contents": [_txt("หุ้นนอก", size="sm", color="#667085", flex=2),
-                                  _txt("พูดเรื่องซื้อ/เทรดหุ้นต่างประเทศ",
-                                       size="sm", color="#111111", flex=6)]})
-    why = (r.get("why") or r.get("why_short") or "").strip()
-    rows.append({"type": "box", "layout": "baseline", "spacing": "sm",
-                 "margin": "md",
-                 "contents": [_txt("เจอเพราะ", size="sm", color="#667085", flex=2),
-                              _txt(why or (r.get("reason") or "")[:120],
-                                   size="sm", weight="bold", color="#111111",
-                                   flex=6)]})
-    ev = (r.get("evidence") or "").strip()
-    if ev:
-        rows.append({"type": "box", "layout": "vertical", "margin": "md",
-                     "backgroundColor": "#FEF3F2", "cornerRadius": "8px",
-                     "paddingAll": "10px",
-                     "contents": [_txt(f"“{ev[:200]}”", size="sm",
-                                       color="#912018")]})
-    footer = []
-    url = post.get("post_url") or ""
-    if url.startswith("http"):
-        footer.append({"type": "button", "style": "primary", "color": RED,
-                       "height": "sm",
-                       "action": {"type": "uri", "label": "เปิดโพสต์",
-                                  "uri": url[:1000]}})
-    footer.append(_txt(f"AI อ่านจากแคปชัน ({model or 'sanmini'}) · "
-                       "เช็กโพสต์ก่อนแจ้ง KOL", size="xxs",
-                       color="#98A2B3", align="center", margin="sm"))
-    bubble = {
-        "type": "bubble", "size": "mega",
-        "header": {"type": "box", "layout": "vertical",
-                   "backgroundColor": RED, "paddingAll": "16px",
-                   "contents": [
-                       _txt("🚨 ด่วน · เจอโพสต์คู่แข่ง", weight="bold",
-                            size="lg", color="#FFFFFF"),
-                       _txt(f"AI ตรวจพบ {stamp} น.", size="xs",
-                            color="#FEE4E2")]},
-        "body": {"type": "box", "layout": "vertical", "spacing": "sm",
-                 "contents": rows},
-        "footer": {"type": "box", "layout": "vertical", "spacing": "sm",
-                   "contents": footer},
-    }
-    alt = f"🚨 ด่วน: {post['kol']} พูดถึง {what}"[:390]
-    return alt, bubble
-
-
-def _posted_th(s):
-    if not s:
-        return "—"
-    if len(s) == 10:
-        return s
-    try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=timezone.utc)
-        return d.astimezone(TH_TZ).strftime("%d/%m %H:%M")
-    except Exception:
-        return s[:16]
+    """Red 'urgent' card (shared layout with keyword alerts)."""
+    why = (r.get("why") or r.get("why_short") or "").strip() \
+        or (r.get("reason") or "")[:120]
+    return alert_card.build(
+        post, source="ai", competitors=comps, why=why,
+        evidence=r.get("evidence") or "",
+        foreign=bool(r.get("foreign_stock_trading")), model=model)
 
 
 def status():

@@ -171,7 +171,7 @@ def collect(channel, limit=10, windowed=True):
             "resultsLimit": limit, "addParentData": False,
         }
         if windowed:
-            payload["resultsLimit"] = max(limit, 10)
+            payload["resultsLimit"] = max(limit, 25)
             payload["onlyPostsNewerThan"] = f"{_window_hours(channel)} hours"
         raw = _apify_errors(prov._call_actor_sync(ACTORS["instagram_general"], payload))
         return [_shape(normalize_ig_post(r, "apify")) for r in raw[:payload["resultsLimit"]]]
@@ -179,7 +179,7 @@ def collect(channel, limit=10, windowed=True):
     if platform == "facebook":
         payload = {"startUrls": [{"url": url}], "resultsLimit": limit}
         if windowed:
-            payload["resultsLimit"] = max(limit, 10)
+            payload["resultsLimit"] = max(limit, 25)
             payload["onlyPostsNewerThan"] = f"{_window_hours(channel)} hours"
         raw = _apify_errors(prov._call_actor_sync(ACTORS["facebook_posts"], payload))
         return [_shape(normalize_fb_post(r, "apify")) for r in raw[:payload["resultsLimit"]]]
@@ -188,10 +188,14 @@ def collect(channel, limit=10, windowed=True):
         user = _x_user(url)
         if not user:
             raise RuntimeError("cannot parse x username")
+        # Busy accounts tweet more than `limit` times between scans; take
+        # a bigger page so nothing between two scans is skipped (tweets are
+        # cheap, and already-seen ones are dropped by the scan).
+        n = max(limit, 10) if windowed else limit
         payload = {
-            "searchTerms": [f"from:{user}"], "maxItems": limit, "sort": "Latest",
+            "searchTerms": [f"from:{user}"], "maxItems": n, "sort": "Latest",
         }
         raw = prov._call_actor_sync(ACTORS["x_tweets"], payload)
-        return [_shape(normalize_x_tweet(r, "apify")) for r in raw[:limit]]
+        return [_shape(normalize_x_tweet(r, "apify")) for r in raw[:n]]
 
     raise RuntimeError(f"apify_profile: unsupported platform {platform}")
