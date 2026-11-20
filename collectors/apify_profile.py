@@ -146,6 +146,30 @@ def _fb_extra_text(r):
     return "\n".join(parts)
 
 
+def _tiktok_fallback(prov, user, limit):
+    raw = prov._call_actor_sync(
+        "igview-owner~tiktok-profile-video-scraper",
+        {"usernames": [user], "maxVideos": limit + 3})
+    out = []
+    for r in raw:
+        vid = str(r.get("video_id") or "")
+        if not vid or str(r.get("is_top") or 0) not in ("0", "False", "false"):
+            continue  # pinned clips sit on top out of date order
+        cap = r.get("title") or ""
+        out.append({
+            "post_id": vid,
+            "url": f"https://www.tiktok.com/@{user}/video/{vid}",
+            "caption": cap,
+            "hashtags": re.findall(r"#([^\s#]+)", cap),
+            "posted_at": r.get("create_time_date") or "",
+            "pinned": False,
+            "subtitle_url": None,
+        })
+    if not out:
+        raise RuntimeError("TikTok ไม่พบบัญชี/ไม่มีคลิป (ชื่อบัญชีอาจเปลี่ยน ถูกปิด หรือลิงก์ในชีตผิด)")
+    return out[:limit]
+
+
 def collect(channel, limit=10, windowed=True):
     platform = channel["platform"]
     url = channel["profile_url"]
@@ -167,9 +191,12 @@ def collect(channel, limit=10, windowed=True):
         }
         raw = prov._call_actor_sync(ACTORS["tiktok_cheap"], payload)
         raw = [r for r in raw if not r.get("noResults")]
-        if not raw:
-            raise RuntimeError("TikTok ไม่พบบัญชี/ไม่มีคลิป (ชื่อบัญชีอาจเปลี่ยน ถูกปิด หรือลิงก์ในชีตผิด)")
         fresh = [r for r in raw if not r.get("isPinned")]
+        if not any("/video/" in (r.get("postPage") or "") for r in fresh):
+            # apidojo answers "noResults" (or stale items without a clip
+            # link) for some live accounts — @easymoneyconcept 232K and
+            # @sothida.c, Nov 2026. A second actor reads them fine.
+            return _tiktok_fallback(prov, user, limit)
         out = []
         for r in fresh:
             tags = [h for h in (r.get("hashtags") or []) if h]
