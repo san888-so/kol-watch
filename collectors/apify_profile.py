@@ -229,6 +229,11 @@ def collect(channel, limit=10, windowed=True):
             "searchTerms": [f"from:{user}"], "maxItems": n, "sort": "Latest",
         }
         raw = prov._call_actor_sync(ACTORS["x_tweets"], payload)
-        return [_shape(normalize_x_tweet(r, "apify")) for r in raw[:n]]
+        # A renamed/deleted account comes back as one placeholder item with
+        # no id — keeping it made the channel look "ok" for months (เจต's
+        # @jadenipat7 → @jadejoodfire, Sep–Nov 2026). Drop it so the scan
+        # gets 0 posts and marks the channel blocked.
+        out = [_shape(normalize_x_tweet(r, "apify")) for r in raw[:n]]
+        return [p for p in out if p["post_id"] and "/status/" in (p["url"] or "")]
 
     raise RuntimeError(f"apify_profile: unsupported platform {platform}")

@@ -108,6 +108,31 @@ def _skip_channels():
     return out
 
 
+def _extra_channels():
+    """Links the Sheet cannot hold: it has ONE column per platform, but a
+    KOL can run a page AND a personal profile, or rename an account.
+    Setting `extra_channels`: JSON {"KOL name as in the Sheet":
+    {"facebook": ["https://..."], "x": "https://..."}}. These links are
+    scanned on top of the Sheet's and survive every re-sync."""
+    try:
+        raw = json.loads(db.get_setting("extra_channels", "{}") or "{}")
+    except Exception:
+        return {}
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if not (isinstance(k, str) and isinstance(v, dict)):
+                continue
+            links = {}
+            for p, urls in v.items():
+                if isinstance(urls, str):
+                    urls = [urls]
+                if p in PLATFORM_COLS and isinstance(urls, list):
+                    links[p] = [str(u).strip() for u in urls if str(u).strip()]
+            out[" ".join(k.split()).lower()] = links
+    return out
+
+
 def _exclusive_override():
     import json
     try:
@@ -127,6 +152,7 @@ def sync_from_sheet(sheet_id, gid=None):
     gid = gid or db.get_setting("sheet_gid", "401523688") or "0"
     rows = gsync.read_csv(sheet_id, gid=gid)
     skip = _skip_channels()
+    extra = _extra_channels()
     skipped = 0
     db.clear_unresolved()
 
@@ -162,11 +188,16 @@ def sync_from_sheet(sheet_id, gid=None):
             cancelled += 1
             continue  # keep its old channels, but don't add or scan any
 
-        skip_here = skip.get(" ".join(name.split()).lower(), set())
+        key = " ".join(name.split()).lower()
+        skip_here = skip.get(key, set())
+        links = []
         for platform, col in PLATFORM_COLS.items():
             raw = _clean(r[col]) if len(r) > col else ""
-            if not raw or raw == "-":
-                continue
+            if raw and raw != "-":
+                links.append((platform, raw))
+        for platform, urls in extra.get(key, {}).items():
+            links += [(platform, u) for u in urls]
+        for platform, raw in links:
             if platform in skip_here:  # team said: don't check this one
                 skipped += 1
                 continue
