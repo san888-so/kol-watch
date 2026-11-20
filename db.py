@@ -128,7 +128,7 @@ DEFAULT_SETTINGS = {
     "line_mode": "broadcast",
     "posts_per_check": "3",
     "enable_bd_fallback": "0",
-    "scan_platforms": "youtube,lemon8,tiktok,instagram,facebook,x",
+    "scan_platforms": "youtube,lemon8,tiktok,instagram,facebook,x,threads",
     # Brand-of-our-client report (separate from competitor alert): we scan
     # every collected post for these terms and LINE-digest the matches at
     # the end of each run, grouped by KOL.

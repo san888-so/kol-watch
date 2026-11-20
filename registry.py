@@ -50,7 +50,10 @@ PLATFORM_HOST = {
     "x": ("x.com", "twitter.com"),
     "instagram": ("instagram.com",),
     "lemon8": ("lemon8-app.com", "lemon8.com"),
+    "threads": ("threads.com", "threads.net"),
 }
+# Platforms the Sheet has no column for, reachable via `extra_channels`.
+EXTRA_ONLY = ("threads",)
 
 _URL_RE = re.compile(r"https?://[^\s]+", re.I)
 
@@ -61,7 +64,7 @@ def _clean(v):
 
 _BARE_RE = re.compile(
     r"(?:www\.)?(?:[a-z0-9-]+\.)*(?:facebook\.com|fb\.com|youtube\.com|youtu\.be|"
-    r"tiktok\.com|x\.com|twitter\.com|instagram\.com|lemon8-app\.com)/[^\s]+", re.I)
+    r"tiktok\.com|x\.com|twitter\.com|instagram\.com|lemon8-app\.com|threads\.com|threads\.net)/[^\s]+", re.I)
 
 
 def _extract_url(raw):
@@ -127,7 +130,7 @@ def _extra_channels():
             for p, urls in v.items():
                 if isinstance(urls, str):
                     urls = [urls]
-                if p in PLATFORM_COLS and isinstance(urls, list):
+                if (p in PLATFORM_COLS or p in EXTRA_ONLY) and isinstance(urls, list):
                     links[p] = [str(u).strip() for u in urls if str(u).strip()]
             out[" ".join(k.split()).lower()] = links
     return out

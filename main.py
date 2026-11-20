@@ -139,7 +139,7 @@ def api_state():
             "posts_per_check": db.get_setting("posts_per_check", "3"),
             "enable_bd_fallback": db.get_setting("enable_bd_fallback", "0"),
             "scan_platforms": db.get_setting("scan_platforms",
-                "youtube,lemon8,tiktok,instagram,facebook,x"),
+                "youtube,lemon8,tiktok,instagram,facebook,x,threads"),
             "client_brands": db.get_setting("client_brands", "{}"),
             "brand_kols_per_bubble": db.get_setting("brand_kols_per_bubble", "5"),
             "brand_digest_max_age_days": db.get_setting("brand_digest_max_age_days", "3"),
@@ -346,7 +346,8 @@ def api_settings(payload):
               "dca_report_enabled", "dca_report_time", "dca_sheet_id",
               "dca_campaigns", "dca_links",
               "ai_review_enabled", "ai_alerts_enabled",
-              "ai_alert_max_age_days", "ai_review_policy"):
+              "ai_alert_max_age_days", "ai_review_policy",
+              "extra_channels", "exclusive_override"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):

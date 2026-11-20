@@ -7,7 +7,7 @@ channel blocked so it surfaces in the digest (never silently 'clean').
 from . import youtube_rss, apify_profile, brightdata_profile, lemon8
 import db
 
-_APIFY = {"tiktok", "instagram", "facebook", "x"}
+_APIFY = {"tiktok", "instagram", "facebook", "x", "threads"}
 _QUOTA = ("hard limit", "platform-feature-disabled", "monthly usage")
 
 

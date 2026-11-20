@@ -137,7 +137,8 @@ def _build_brand_bubbles(hits):
 
 
 _PLAT_TH = {"facebook": "FB", "instagram": "IG", "tiktok": "TikTok",
-            "youtube": "YouTube", "x": "X", "lemon8": "Lemon8"}
+            "youtube": "YouTube", "x": "X", "lemon8": "Lemon8",
+            "threads": "Threads"}
 _DIGEST_MAX_POSTS = 15
 
 
@@ -207,7 +208,7 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
     # Facebook, which is ~80% of the Apify bill, when budget is tight).
     enabled = {p.strip() for p in
                (db.get_setting("scan_platforms",
-                               "youtube,lemon8,tiktok,instagram,facebook,x")
+                               "youtube,lemon8,tiktok,instagram,facebook,x,threads")
                 or "").split(",") if p.strip()}
     channels = [c for c in db.list_channels() if c["platform"] in enabled]
     if exclusive_only:  # "เฝ้าเข้ม" hourly round: Exclusive KOLs only

@@ -264,4 +264,36 @@ def collect(channel, limit=10, windowed=True):
         out = [_shape(normalize_x_tweet(r, "apify")) for r in raw[:n]]
         return [p for p in out if p["post_id"] and "/status/" in (p["url"] or "")]
 
+    if platform == "threads":
+        m = re.search(r"threads\.(?:com|net)/@([\w.]+)", url)
+        if not m:
+            raise RuntimeError("cannot parse threads username")
+        user = m.group(1)
+        # One dataset item per profile (billed once, ~$0.002) carrying its
+        # recent posts; pinned posts come first, so sort by date ourselves.
+        raw = prov._call_actor_sync(
+            "sourabhbgp~threads-scraper",
+            {"urls": [f"https://www.threads.com/@{user}"],
+             "maxResults": max(limit, 10) + 10})
+        prof = next((r for r in raw if r.get("type") == "profile"), None)
+        if not prof:
+            raise RuntimeError("Threads ไม่พบบัญชี (ชื่ออาจเปลี่ยน ถูกปิด หรือเป็นส่วนตัว)")
+        posts = sorted(prof.get("posts") or [],
+                       key=lambda p: p.get("postedAt") or "", reverse=True)
+        out = []
+        for p in posts:
+            code = p.get("postCode")
+            if not code:
+                continue
+            text = p.get("text") or ""
+            out.append({
+                "post_id": "th-" + code,
+                "url": f"https://www.threads.com/@{user}/post/{code}",
+                "caption": text,
+                "hashtags": re.findall(r"#([^\s#]+)", text),
+                "posted_at": p.get("postedAt") or "",
+                "pinned": False,
+            })
+        return out
+
     raise RuntimeError(f"apify_profile: unsupported platform {platform}")
