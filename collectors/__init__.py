@@ -29,7 +29,9 @@ def collect(channel, limit=10, windowed=True):
 def _collect(channel, limit=10, windowed=True):
     platform = channel["platform"]
     if platform == "youtube":
-        return youtube_rss.collect(channel, limit=limit)
+        # Same quota cost for 3 or 15 items (1 API unit / free RSS), and a
+        # channel posting Shorts can add 4+ videos between scans.
+        return youtube_rss.collect(channel, limit=max(limit, 15))
     if platform == "lemon8":
         return lemon8.collect(channel, limit=limit)
     if platform in _APIFY:

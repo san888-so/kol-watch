@@ -171,7 +171,7 @@ def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
     return ok
 
 
-def run_once(triggered_by="manual"):
+def run_once(triggered_by="manual", only_before=None):
     if PROGRESS["running"]:
         return {"error": "already running"}
     PROGRESS.update(running=True, done=0, current="", summary="")
@@ -184,7 +184,13 @@ def run_once(triggered_by="manual"):
                                "youtube,lemon8,tiktok,instagram,facebook,x")
                 or "").split(",") if p.strip()}
     channels = [c for c in db.list_channels() if c["platform"] in enabled]
+    if only_before:  # resuming a scan a restart cut off: skip channels done
+        channels = [c for c in channels
+                    if not c.get("last_checked") or c["last_checked"] < only_before]
     PROGRESS["total"] = len(channels)
+    # Marker so a restart (deploy, crash) mid-scan can resume on boot.
+    run_started = only_before or datetime.now(timezone.utc).isoformat()
+    db.set_setting("scan_running_since", run_started)
     try:
         limit = int(db.get_setting("posts_per_check", "3") or "3")
     except ValueError:
@@ -223,9 +229,15 @@ def run_once(triggered_by="manual"):
             is_excl = "non" not in (ch.get("kol_exclusivity") or "").lower()
             for p in posts:
                 pid = p.get("post_id") or ""
-                if not pid or db.post_seen(ch["id"], pid,
-                                           p.get("caption", "")):
+                base = (p.get("caption") or "").strip()
+                extra = (p.get("extra") or "").strip()
+                text = (base + "\n" + extra).strip() if extra else base
+                # Dedupe key: the caption, or (empty caption, e.g. a plain
+                # FB share) the start of the extra text.
+                key = base if len(base) >= 20 else text[:300]
+                if not pid or db.post_seen(ch["id"], pid, key):
                     continue
+                p = dict(p, caption=text)
                 new_posts += 1
                 found = matcher.scan(p.get("caption", ""),
                                      p.get("hashtags", [])) if is_excl else []
@@ -331,6 +343,9 @@ def run_once(triggered_by="manual"):
             f"📊 เจอโพส {brand_label}: {brand_sent}  (เฉพาะโพสต์ลงภายใน {max_age_days} วัน)\n"
             f"❌ เช็กไม่ได้: {blocked}"
         )
+        budget = _apify_budget_line()
+        if budget:
+            summary += "\n" + budget
         try:
             import ai_review
             ai_line = ai_review.digest_line()
@@ -341,11 +356,44 @@ def run_once(triggered_by="manual"):
         PROGRESS["summary"] = summary
         if not stopped:  # don't LINE-spam a digest on a manual stop
             notify_line.digest([summary])
+        db.set_setting("scan_running_since", "")  # finished (or stopped)
     finally:
         PROGRESS.update(running=False, current="",
                         last_run=datetime.now(timezone.utc).isoformat())
         _STOP.clear()
     return {"ok": True, "new_posts": new_posts, "hits": hits, "blocked": blocked}
+
+
+def _apify_budget_line():
+    """Warn in the digest when this month's Apify spend nears the cap —
+    at the cap every TikTok/IG/FB/X channel stops being scanned."""
+    try:
+        import os
+        from urllib.request import urlopen
+        tok = (os.environ.get("APIFY_TOKEN") or os.environ.get("APIFY_API_TOKEN")
+               or "").strip()
+        if not tok:
+            return ""
+        with urlopen("https://api.apify.com/v2/users/me/limits?token=" + tok,
+                     timeout=15) as r:
+            d = json.loads(r.read().decode("utf-8"))["data"]
+        used = float(d["current"]["monthlyUsageUsd"])
+        cap = float(d["limits"]["maxMonthlyUsageUsd"])
+        end = d["monthlyUsageCycle"]["endAt"][:10]
+        start = datetime.fromisoformat(
+            d["monthlyUsageCycle"]["startAt"].replace("Z", "+00:00"))
+        days = max((datetime.now(timezone.utc) - start).total_seconds() / 86400, 0.5)
+        per_day = used / days
+        left = (cap - used) / per_day if per_day > 0 else 999
+        if used >= cap * 0.98:
+            return (f"⛔ Apify ใช้ครบเพดาน ${used:.0f}/${cap:.0f} แล้ว — "
+                    f"TikTok/IG/FB/X หยุดสแกนจนถึง {end} (ต้องเพิ่มเพดาน)")
+        if used >= cap * 0.6 or left < 10:
+            return (f"💸 Apify ใช้ไป ${used:.0f}/${cap:.0f} (~${per_day:.0f}/วัน) — "
+                    f"อีก ~{left:.0f} วันเต็มเพดาน (รอบบิลจบ {end})")
+    except Exception:
+        traceback.print_exc()
+    return ""
 
 
 def _load_fired(key):
@@ -394,6 +442,23 @@ def scheduler_thread(stop_event):
         db.set_setting("dca_selftest", json.dumps(
             {"at": datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M"),
              "ok": False, "err": str(e)[:200]}))
+
+    # Resume a scan that a restart (deploy / crash) cut off — only the
+    # channels it hadn't reached yet. Ignored if it's stale (> 3 h).
+    try:
+        since = db.get_setting("scan_running_since", "") or ""
+        if since:
+            age = (datetime.now(timezone.utc)
+                   - datetime.fromisoformat(since)).total_seconds()
+            if age < 3 * 3600:
+                print(f"[scan] resuming scan cut off by restart (since {since})",
+                      flush=True)
+                run_once(triggered_by="ต่อรอบที่ค้างหลังรีสตาร์ท",
+                         only_before=since)
+            else:
+                db.set_setting("scan_running_since", "")
+    except Exception:
+        traceback.print_exc()
 
     while not stop_event.is_set():
         try:

@@ -118,6 +118,34 @@ def _apify_errors(raw):
     return items
 
 
+def _fb_extra_text(r):
+    """Text the caption alone misses (Nov 2026 audit):
+      * a SHARED post — the KOL's own text is often empty and the promo
+        is in the shared post (~68 empty-caption FB posts a week)
+      * the outbound link (e.g. finansiahero.com/promotion)
+      * the page owner's own comments — 'ลิงก์สมัครในคอมเมนต์' promos
+    Labelled so the AI / the team can see where the words came from."""
+    parts = []
+    sp = r.get("sharedPost") or {}
+    if isinstance(sp, dict) and (sp.get("text") or "").strip():
+        who = (sp.get("pageName") or {})
+        who = who.get("name") if isinstance(who, dict) else str(who or "")
+        parts.append(f"[แชร์จาก {who or 'โพสต์อื่น'}] {sp['text'].strip()[:1500]}")
+    link = (r.get("link") or "").strip()
+    if link and "facebook.com" not in link:
+        parts.append(f"[ลิงก์] {link}")
+    owner = ((r.get("user") or {}).get("name") or r.get("pageName") or "").strip().lower()
+    for c in (r.get("topComments") or [])[:10]:
+        if not isinstance(c, dict):
+            continue
+        name = (c.get("profileName") or (c.get("author") or {}).get("name")
+                or (c.get("user") or {}).get("name") or "")
+        if owner and name and name.strip().lower() == owner \
+                and (c.get("text") or "").strip():
+            parts.append(f"[คอมเมนต์เจ้าของเพจ] {c['text'].strip()[:600]}")
+    return "\n".join(parts)
+
+
 def collect(channel, limit=10, windowed=True):
     platform = channel["platform"]
     url = channel["profile_url"]
@@ -143,7 +171,7 @@ def collect(channel, limit=10, windowed=True):
             raise RuntimeError("TikTok ไม่พบบัญชี/ไม่มีคลิป (ชื่อบัญชีอาจเปลี่ยน ถูกปิด หรือลิงก์ในชีตผิด)")
         fresh = [r for r in raw if not r.get("isPinned")]
         out = []
-        for r in fresh[:limit]:
+        for r in fresh:
             tags = [h for h in (r.get("hashtags") or []) if h]
             out.append({
                 "post_id": str(r.get("id") or ""),
@@ -182,7 +210,12 @@ def collect(channel, limit=10, windowed=True):
             payload["resultsLimit"] = max(limit, 25)
             payload["onlyPostsNewerThan"] = f"{_window_hours(channel)} hours"
         raw = _apify_errors(prov._call_actor_sync(ACTORS["facebook_posts"], payload))
-        return [_shape(normalize_fb_post(r, "apify")) for r in raw[:payload["resultsLimit"]]]
+        out = []
+        for r in raw[:payload["resultsLimit"]]:
+            post = _shape(normalize_fb_post(r, "apify"))
+            post["extra"] = _fb_extra_text(r)  # scanned with the caption
+            out.append(post)
+        return out
 
     if platform == "x":
         user = _x_user(url)

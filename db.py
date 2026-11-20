@@ -323,9 +323,12 @@ def post_seen(channel_id, post_id, caption=None):
             return True
         cap = (caption or "").strip()
         if len(cap) >= 20:
+            # Prefix match: the stored text may carry extra text appended
+            # after the caption (FB shared post / owner comments / link).
             r = c.execute(
-                "SELECT 1 FROM seen_post WHERE channel_id=? AND caption=? LIMIT 1",
-                (channel_id, caption)).fetchone()
+                "SELECT 1 FROM seen_post WHERE channel_id=? AND "
+                "(caption=? OR substr(caption,1,?)=?) LIMIT 1",
+                (channel_id, caption, len(caption), caption)).fetchone()
             return r is not None
         return False
 
