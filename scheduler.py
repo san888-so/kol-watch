@@ -136,6 +136,29 @@ def _build_brand_bubbles(hits):
     return bubbles
 
 
+_PLAT_TH = {"facebook": "FB", "instagram": "IG", "tiktok": "TikTok",
+            "youtube": "YouTube", "x": "X", "lemon8": "Lemon8"}
+_DIGEST_MAX_POSTS = 15
+
+
+def _competitor_post_lines(posts):
+    """Digest block: one numbered entry per post (not per keyword), so the
+    team can follow up each post. Capped to keep the LINE text under 5000."""
+    out = ["────────", "โพสต์ที่เจอคำคู่แข่ง (แยกทีละโพสต์):"]
+    for i, c in enumerate(posts[:_DIGEST_MAX_POSTS], 1):
+        when = _post_time_th(c.get("posted_at", ""))
+        out.append(f"{i}. {c['kol']} · {_PLAT_TH.get(c['platform'], c['platform'])}"
+                   + (f" · {when}" if when and when != "—" else ""))
+        out.append(f"   คำที่เจอ: {', '.join(c['keywords'])}")
+        if c.get("url"):
+            out.append(f"   {c['url']}")
+    rest = len(posts) - _DIGEST_MAX_POSTS
+    if rest > 0:
+        out.append(f"…และอีก {rest} โพสต์ ดูในหน้าเว็บ แท็บเจอคำคู่แข่ง")
+    out.append("────────")
+    return "\n".join(out)
+
+
 def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
     """Send one alert card for a post's keyword matches (same layout as the
     AI card). Broad topic words alone (หุ้นนอก ...) get the orange
@@ -204,6 +227,7 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         limit = 3
 
     new_posts = hits = blocked = 0
+    comp_posts = []   # one entry per post with a new competitor hit (digest list)
     brand_wl = matcher.get_client_brands()
     unbranded_wl = matcher.get_unbranded_watchlist()
     try:
@@ -291,6 +315,13 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                         hits += 1
                         new_hits.append((hid, f))
                 if new_hits:
+                    comp_posts.append({
+                        "kol": ch["kol_name"], "platform": ch["platform"],
+                        "url": p.get("url", ""),
+                        "posted_at": p.get("posted_at", ""),
+                        "keywords": list(dict.fromkeys(
+                            f["keyword"] for _, f in new_hits)),
+                    })
                     ok = _push_keyword_card(ch, p, [f for _, f in new_hits],
                                             unbranded_wl,
                                             [h for h, _ in new_hits])
@@ -355,10 +386,12 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
             f"ช่องที่สแกน: {scanned}\n"
             f"จากทั้งหมด KOL: {total_kols}\n"
             f"โพสต์ใหม่: {new_posts}\n"
-            f"⚠️ เจอคำคู่แข่ง: {hits}\n"
+            f"⚠️ เจอคำคู่แข่ง: {len(comp_posts)} โพสต์\n"
             f"📊 เจอโพส {brand_label}: {brand_sent}  (เฉพาะโพสต์ลงภายใน {max_age_days} วัน)\n"
             f"❌ เช็กไม่ได้: {blocked}"
         )
+        if comp_posts:
+            summary += "\n" + _competitor_post_lines(comp_posts)
         budget = _apify_budget_line()
         if budget:
             summary += "\n" + budget
@@ -372,7 +405,7 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         PROGRESS["summary"] = summary
         # Hourly Exclusive rounds: no digest unless something was found —
         # alerts already went out one card per post; 24 digests/day is spam.
-        if exclusive_only and not hits:
+        if exclusive_only and not comp_posts:
             stopped = True  # (reuse: suppresses the digest below)
         if not stopped:  # don't LINE-spam a digest on a manual stop
             notify_line.digest([summary])
@@ -381,7 +414,8 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         PROGRESS.update(running=False, current="",
                         last_run=datetime.now(timezone.utc).isoformat())
         _STOP.clear()
-    return {"ok": True, "new_posts": new_posts, "hits": hits, "blocked": blocked}
+    return {"ok": True, "new_posts": new_posts, "hits": hits,
+            "hit_posts": len(comp_posts), "blocked": blocked}
 
 
 def _apify_budget_line():
