@@ -96,6 +96,10 @@ def save(payload):
         post = db.ai_post(sid)
         if not post:
             continue
+        # Posts before the competitor-watch start (2025 and older) are not
+        # a breach: keep the AI's reading but never as urgent/watch.
+        if level in ("urgent", "watch") and db.before_watch(post.get("posted_at")):
+            level = "skip"
         new = db.save_ai_review(
             sid, level, comps, r.get("foreign_stock_trading"),
             r.get("mentions_webull"), str(r.get("reason") or "")[:500],
