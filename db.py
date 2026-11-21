@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS scan_run (
     brand_hits INTEGER DEFAULT 0,
     blocked INTEGER DEFAULT 0,
     blocked_json TEXT,                -- [{kol, platform, url, error}]
-    status TEXT DEFAULT 'running'     -- running | done | stopped | error
+    status TEXT DEFAULT 'running'     -- running | done | stopped | error | interrupted
 );
 CREATE INDEX IF NOT EXISTS idx_channel_kol ON channel(kol_id);
 CREATE INDEX IF NOT EXISTS idx_seen_scanned ON seen_post(scanned_at);
@@ -742,6 +742,15 @@ def start_run(trigger, scope, total):
         cur = c.execute("""INSERT INTO scan_run(started_at,trigger,scope,total)
                            VALUES(?,?,?,?)""", (now, trigger, scope, total))
         return cur.lastrowid
+
+
+def close_dead_runs():
+    """At boot no scan is running yet: any scan_run still marked running
+    was cut off by a restart (deploy / crash)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _conn() as c:
+        c.execute("UPDATE scan_run SET status='interrupted', finished_at=? "
+                  "WHERE status='running'", (now,))
 
 
 def finish_run(run_id, **fields):

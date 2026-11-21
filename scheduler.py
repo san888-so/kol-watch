@@ -481,6 +481,10 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         # alerts already went out one card per post; 24 digests/day is spam.
         if exclusive_only and not comp_posts:
             stopped = True  # (reuse: suppresses the digest below)
+        # Same for the tail of a round cut off by a deploy: a digest saying
+        # "1 channel scanned, nothing found" only confuses the team.
+        if only_before and not comp_posts:
+            stopped = True
         if not stopped:  # don't LINE-spam a digest on a manual stop
             notify_line.digest([summary])
         db.set_setting("scan_running_since", "")  # finished (or stopped)
@@ -520,8 +524,28 @@ def _apify_budget_line():
         end = d["monthlyUsageCycle"]["endAt"][:10]
         start = datetime.fromisoformat(
             d["monthlyUsageCycle"]["startAt"].replace("Z", "+00:00"))
-        days = max((datetime.now(timezone.utc) - start).total_seconds() / 86400, 0.5)
+        now = datetime.now(timezone.utc)
+        days = max((now - start).total_seconds() / 86400, 0.5)
         per_day = used / days
+        # The cycle average is skewed by one-off backfills (Nov 2026: $186/
+        # day shown while the hourly scan cost ~$20/day), so use the spend
+        # over the last ~24h when we have it: keep a small usage log.
+        try:
+            log = json.loads(db.get_setting("apify_usage_log", "[]") or "[]")
+        except Exception:
+            log = []
+        log = [e for e in log if e[0] >= (now - timedelta(hours=48)).isoformat()
+               and e[1] <= used]
+        log.append([now.isoformat(), used])
+        db.set_setting("apify_usage_log", json.dumps(log[-80:]))
+        old = [e for e in log
+               if (now - timedelta(hours=26)).isoformat() <= e[0]
+               <= (now - timedelta(hours=6)).isoformat()]
+        if old:
+            t0, u0 = old[0]          # the widest window, up to ~24h back
+            hrs = (now - datetime.fromisoformat(t0)).total_seconds() / 3600
+            if hrs > 0:
+                per_day = (used - u0) / hrs * 24
         left = (cap - used) / per_day if per_day > 0 else 999
         if used >= cap * 0.98:
             return (f"⛔ Apify ใช้ครบเพดาน ${used:.0f}/${cap:.0f} แล้ว — "
@@ -580,6 +604,13 @@ def scheduler_thread(stop_event):
         db.set_setting("dca_selftest", json.dumps(
             {"at": datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M"),
              "ok": False, "err": str(e)[:200]}))
+
+    # A round that was running when the process died never got its
+    # finish_run, so the scan log showed it "running" forever.
+    try:
+        db.close_dead_runs()
+    except Exception:
+        traceback.print_exc()
 
     # Resume a scan that a restart (deploy / crash) cut off — only the
     # channels it hadn't reached yet. Ignored if it's stale (> 3 h).

@@ -491,7 +491,7 @@ async function vHome(){
 
 /* ═══════════════════════════ SCAN LOG ═══════════════════════════ */
 const SCOPE = {all:['ทุกช่อง','info'], exclusive:['Exclusive','wait'], resume:['ต่อรอบค้าง','off'], history:['ย้อนหลัง','off']};
-const RST = {done:['เสร็จ','ok'], running:['กำลังตรวจ','info'], stopped:['หยุดกลางทาง','wait'], error:['ผิดพลาด','hot'], history:['ประมาณ','off']};
+const RST = {done:['เสร็จ','ok'], running:['กำลังตรวจ','info'], stopped:['หยุดกลางทาง','wait'], interrupted:['ค้างเพราะรีสตาร์ท (ต่อรอบแล้ว)','wait'], error:['ผิดพลาด','hot'], history:['ประมาณ','off']};
 function runTable(rows){
   if(!rows.length) return '<div class="empty">ยังไม่มีรอบที่บันทึก — รอบถัดไปจะเริ่มบันทึกอัตโนมัติ</div>';
   return `<div class="tblwrap"><table><thead><tr><th>เริ่มตรวจ</th><th>ประเภท</th><th class="num">ช่องที่ตรวจ</th><th>ใช้เวลา</th>
