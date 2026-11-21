@@ -85,7 +85,10 @@ def _post_time_th(s):
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
         if d.tzinfo is None:
             d = d.replace(tzinfo=timezone.utc)
-        return d.astimezone(TH_TZ).strftime("%H:%M น. %d/%m")
+        d = d.astimezone(TH_TZ)
+        if d.year != datetime.now(TH_TZ).year:   # say the year if not this one
+            return d.strftime("%d/%m/") + str(d.year + 543)[-2:]
+        return d.strftime("%H:%M น. %d/%m")
     except Exception:
         return s[:16]
 
@@ -149,7 +152,8 @@ def _competitor_post_lines(posts):
     for i, c in enumerate(posts[:_DIGEST_MAX_POSTS], 1):
         when = _post_time_th(c.get("posted_at", ""))
         out.append(f"{i}. {c['kol']} · {_PLAT_TH.get(c['platform'], c['platform'])}"
-                   + (f" · {when}" if when and when != "—" else ""))
+                   + (f" · {when}" if when and when != "—" else "")
+                   + (" · โพสต์เก่า (เพิ่งเจอ)" if c.get("old") else ""))
         out.append(f"   คำที่เจอ: {', '.join(c['keywords'])}")
         if c.get("url"):
             out.append(f"   {c['url']}")
@@ -196,6 +200,24 @@ def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
             "matched_keyword": ", ".join(m["keyword"] for m in matches),
             "post_url": p.get("url", ""), "snippet": f.get("snippet", "")})
     return ok
+
+
+def _is_old_post(posted_at):
+    """True when the post is older than `competitor_alert_max_age_days`
+    (default 30). A post with no date counts as new (alert, to be safe)."""
+    if not posted_at:
+        return False
+    try:
+        days = int(db.get_setting("competitor_alert_max_age_days", "30") or "30")
+    except ValueError:
+        days = 30
+    try:
+        d = datetime.fromisoformat(posted_at.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return False
+    return datetime.now(timezone.utc) - d > timedelta(days=days)
 
 
 # Errors a retry cannot fix (FB profile shown to friends only, quota out).
@@ -367,10 +389,15 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                         "keywords": list(dict.fromkeys(
                             f["keyword"] for _, f in new_hits)),
                     })
-                    ok = _push_keyword_card(ch, p, [f for _, f in new_hits],
+                    # An old post found only now (a channel just added, or a
+                    # scraper reaching further back) is not "urgent": it is
+                    # kept on the web page and in the round summary, but no
+                    # red card (San, 22 Nov 2026 — 2025 videos alerted at 1am).
+                    if _is_old_post(p.get("posted_at", "")):
+                        comp_posts[-1]["old"] = True
+                    elif _push_keyword_card(ch, p, [f for _, f in new_hits],
                                             unbranded_wl,
-                                            [h for h, _ in new_hits])
-                    if ok:
+                                            [h for h, _ in new_hits]):
                         for hid, _ in new_hits:
                             db.mark_notified(hid)
 

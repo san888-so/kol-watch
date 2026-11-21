@@ -47,7 +47,12 @@ def when_th(s):
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
         if d.tzinfo is None:
             d = d.replace(tzinfo=timezone.utc)
-        return d.astimezone(TH_TZ).strftime("%d/%m %H:%M")
+        d = d.astimezone(TH_TZ)
+        # A post from another year must say so — "16/10" alone read as last
+        # month when it was Oct 2025 (San, 22 Nov 2026).
+        if d.year != datetime.now(TH_TZ).year:
+            return d.strftime("%d/%m/") + str(d.year + 543)[-2:]
+        return d.strftime("%d/%m %H:%M")
     except Exception:
         return s[:16]
 
