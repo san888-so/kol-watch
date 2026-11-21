@@ -839,7 +839,7 @@ async function loadDb(){
 
 /* ═══════════════════════════ HITS / AI / BRAND (existing data) ═══════════════════════════ */
 let STATE = null, HITF = 'new';
-const HS = {new:['ยังไม่จัดการ', 'hot'], contacted:['ติดต่อ KOL แล้ว', 'wait'], removed:['KOL ลบแล้ว', 'ok'], ignored:['ไม่ใช่ / ข้าม', 'off']};
+const HS = {new:['ยังไม่จัดการ', 'hot'], contacted:['ติดต่อ KOL แล้ว', 'wait'], removed:['KOL ลบแล้ว', 'ok'], ignored:['ไม่ใช่ / ข้าม', 'off'], backfill:['ย้อนหลัง (ยังไม่ตรวจ)', 'wait']};
 async function vHits(){
   STATE = await J('/api/state');
   const hits = STATE.hits, cnt = s => hits.filter(h => h.handle_status === s).length;
@@ -847,7 +847,7 @@ async function vHits(){
   const list = HITF === 'all' ? hits : hits.filter(h => h.handle_status === HITF);
   V().innerHTML = head('เจอคำคู่แข่ง', 'โพสต์ของ KOL Exclusive ที่มีคำคู่แข่ง — เปิดดู แล้วเลือกสถานะว่าจัดการแล้วหรือยัง (ทีมกดตัดสินจาก LINE ได้ด้วย)') + `
   <div class="tiles">${Object.entries(HS).map(([k, [l]]) => `<button class="tile ${k === 'new' && cnt(k) ? 'alert' : ''}" data-f="${k}"><div class="lab">${l}</div><div class="num">${num(cnt(k))}</div></button>`).join('')}</div>
-  <div class="card"><div class="bar"><div class="seg" id="hf">${[['new', 'ยังไม่จัดการ'], ['contacted', 'ติดต่อแล้ว'], ['removed', 'ลบแล้ว'], ['ignored', 'ข้าม'], ['all', 'ทั้งหมด']].map(([k, l]) => `<button data-f="${k}" class="${HITF === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="card"><div class="bar"><div class="seg" id="hf">${[['new', 'ยังไม่จัดการ'], ['contacted', 'ติดต่อแล้ว'], ['removed', 'ลบแล้ว'], ['ignored', 'ข้าม'], ['backfill', 'ย้อนหลัง'], ['all', 'ทั้งหมด']].map(([k, l]) => `<button data-f="${k}" class="${HITF === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <span class="muted small" style="margin-left:auto">${num(list.length)} รายการ</span></div>
     ${list.length ? `<div class="tblwrap"><table><thead><tr><th>เจอเมื่อ</th><th>KOL</th><th>คำ</th><th>ข้อความรอบคำ</th><th>ทีมตัดสิน</th><th>สถานะ</th><th></th></tr></thead><tbody>
     ${list.map(h => `<tr><td class="nw small">${fmtTH(h.detected_at)}<div class="faint">โพสต์ ${fmtTH(h.posted_at, false)}</div></td><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)}</div></td>

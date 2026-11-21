@@ -313,6 +313,65 @@ def api_health_status():
     return scheduler.HEALTH, 200
 
 
+def api_import_posts(payload):
+    """Load old posts fetched outside the hourly scan (the year backfill,
+    San 22 Nov 2026: "สแกนพวก Exclusive ให้เคลียร์ เอาลง DB ให้หมด").
+
+    payload: {"posts": [{"channel_id", "post_id", "url", "posted_at",
+              "caption", "hashtags": [...]}]}  (≤ 3000 per call)
+    Each post goes through the same dedupe and keyword match as a scan,
+    but: scanned_at = posted_at, so the backlog does not flood the AI
+    reviewer queue or today's counts; hits are saved notified=1, so the
+    team's LINE gets no cards for them — they show on the web page."""
+    import matcher
+    posts = payload.get("posts") or []
+    if not isinstance(posts, list) or len(posts) > 3000:
+        return {"error": "posts: list of at most 3000"}, 400
+    chans = {c["id"]: c for c in db.list_channels(active_only=False)}
+    brand_wl = matcher.get_client_brands()
+    unbranded_wl = matcher.get_unbranded_watchlist()
+    out = {"received": len(posts), "added": 0, "dupe": 0, "no_channel": 0,
+           "competitor_hits": 0, "brand_hits": 0}
+    for p in posts:
+        ch = chans.get(p.get("channel_id"))
+        pid = str(p.get("post_id") or "").strip()
+        if not ch or not pid:
+            out["no_channel"] += 1
+            continue
+        cap = (p.get("caption") or "").strip()
+        tags = [t for t in (p.get("hashtags") or []) if t]
+        key = cap if len(cap) >= 20 else ""
+        if db.post_seen(ch["id"], pid, key):
+            out["dupe"] += 1
+            continue
+        is_excl = "non" not in (ch.get("kol_exclusivity") or "").lower()
+        found = matcher.scan(cap, tags) if is_excl else []
+        bf = matcher.scan(cap, tags, watchlist=brand_wl) if brand_wl else []
+        if is_excl and unbranded_wl and not bf and not found:
+            broad = matcher.scan(cap, tags, watchlist=unbranded_wl)
+            sig = matcher.promo_signal(cap, tags) if broad else ""
+            if sig:
+                for f in broad:
+                    f["promo_signal"] = sig
+                found += broad
+        posted = p.get("posted_at") or ""
+        db.import_seen(ch["id"], pid, p.get("url") or "", posted, cap, tags,
+                       matched=bool(found), scanned_at=posted or "2026-01-01")
+        out["added"] += 1
+        for kind, fs in (("competitor", found), ("brand", bf)):
+            for f in fs:
+                if db.hit_exists_for(ch["id"], f["keyword"],
+                                     p.get("url") or "", pid):
+                    continue
+                hid = db.add_hit(ch["id"], ch["kol_name"], ch["platform"],
+                                 p.get("url") or "", pid, posted,
+                                 f["keyword"], f["snippet"], kind=kind)
+                if hid:
+                    db.mark_backfill_hit(hid, posted)
+                    out[kind + "_hits"] += 1
+    return out, 200
+
+
 def api_brand_backfill():
     """Re-scan every already-collected post against the client_brands list
     and record brand hits. Marks them notified=1 so we don't blast LINE
@@ -725,6 +784,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_run()
             elif path == "/api/stop":
                 r, c = api_stop()
+            elif path == "/api/import_posts":
+                r, c = api_import_posts(payload)
             elif path == "/api/brand_backfill":
                 r, c = api_brand_backfill()
             elif path == "/api/health_check":

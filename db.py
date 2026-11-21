@@ -366,6 +366,20 @@ def mark_seen(channel_id, post_id, post_url, posted_at,
              now, 1 if matched else 0, subtitle_url or None))
 
 
+def import_seen(channel_id, post_id, post_url, posted_at, caption="",
+                hashtags=None, matched=False, scanned_at=""):
+    """mark_seen for back-filled posts: keeps the given scanned_at (the
+    post date) instead of now, so old posts stay out of the AI queue."""
+    tags = " ".join(hashtags or [])
+    with _lock, _conn() as c:
+        c.execute("""INSERT OR IGNORE INTO seen_post
+            (channel_id,post_id,post_url,posted_at,caption,hashtags,scanned_at,
+             matched)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (channel_id, post_id, post_url, posted_at, caption, tags,
+             scanned_at, 1 if matched else 0))
+
+
 def list_all_posts():
     """Every collected post with KOL/platform/date — newest posted first."""
     with _conn() as c:
@@ -406,7 +420,10 @@ def list_hits(status=None, kind="competitor"):
         if status:
             q += " AND handle_status=?"
             args.append(status)
-        q += " ORDER BY detected_at DESC LIMIT 1000"
+        # Back-filled old hits (status 'backfill') sort after the live ones
+        # so thousands of them never push the team's queue off the list.
+        q += (" ORDER BY (handle_status='backfill'), detected_at DESC"
+              " LIMIT 2500")
         return [dict(r) for r in c.execute(q, args).fetchall()]
 
 
@@ -460,6 +477,15 @@ def unnotified_hits():
     with _conn() as c:
         return [dict(r) for r in c.execute(
             "SELECT * FROM hit WHERE notified=0 ORDER BY detected_at ASC").fetchall()]
+
+
+def mark_backfill_hit(hit_id, posted_at=""):
+    """A hit found in old posts loaded by the backfill: no LINE card, its
+    own status, dated by the post (not today) so it sorts with its era."""
+    with _lock, _conn() as c:
+        c.execute("UPDATE hit SET notified=1, handle_status='backfill', "
+                  "detected_at=COALESCE(NULLIF(?,''), detected_at) WHERE id=?",
+                  (posted_at or "", hit_id))
 
 
 def mark_notified(hit_id):
