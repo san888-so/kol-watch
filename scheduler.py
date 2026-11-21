@@ -198,6 +198,35 @@ def _push_keyword_card(ch, p, matches, unbranded_wl, hit_ids=()):
     return ok
 
 
+# Errors a retry cannot fix (FB profile shown to friends only, quota out).
+_NO_RETRY = ("not_available", "only shared it", "hard limit",
+             "platform-feature-disabled", "monthly usage")
+
+
+def _collect_with_retry(ch, limit):
+    """Exclusive KOLs must be fully covered: a failed or empty fetch is
+    tried again (San, 21 Nov 2026 — "ถ้าใครโหลดได้ไม่ครบ ให้โหลดซ้ำ").
+    Scrapers fail transiently (X search outage, TikTok/Lemon8 empty pages
+    that load fine an hour later), so wait a bit between tries."""
+    is_excl = "non" not in (ch.get("kol_exclusivity") or "").lower()
+    try:
+        retries = int(db.get_setting("exclusive_retries", "2") or "2")
+    except ValueError:
+        retries = 2
+    delays = [10, 45, 90][:retries] if is_excl else []
+    for attempt in range(len(delays) + 1):
+        try:
+            return collectors.collect(ch, limit=limit)
+        except Exception as e:
+            msg = str(e).lower()
+            if (attempt >= len(delays) or _STOP.is_set()
+                    or any(k in msg for k in _NO_RETRY)):
+                raise
+            print(f"[retry] {ch['kol_name']} / {ch['platform']} try "
+                  f"{attempt + 2}: {str(e)[:120]}", flush=True)
+            _STOP.wait(delays[attempt])
+
+
 def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
     if PROGRESS["running"]:
         return {"error": "already running"}
@@ -248,7 +277,7 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                 break
             PROGRESS["current"] = f"{ch['kol_name']} / {ch['platform']}"
             try:
-                posts = collectors.collect(ch, limit=limit)
+                posts = _collect_with_retry(ch, limit)
             except Exception as e:
                 blocked += 1
                 blocked_list.append({"kol": ch["kol_name"],
