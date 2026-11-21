@@ -23,7 +23,32 @@ def collect(channel, limit=10, windowed=True):
     if not posts and not (windowed and channel["platform"] in _WINDOWED):
         raise RuntimeError("ดึงได้ 0 โพสต์ — บัญชีอาจเปลี่ยนชื่อ ถูกปิด เป็นส่วนตัว "
                            "หรือลิงก์ในชีตผิด")
+    for p in posts:
+        if not p.get("posted_at"):
+            p["posted_at"] = date_from_id(channel["platform"], p.get("post_id"))
     return posts
+
+
+def date_from_id(platform, post_id):
+    """X and TikTok ids carry their creation time. Some scrapers return no
+    date (5,106 X posts were saved undated by Nov 2026 and so missing from
+    every per-month count) — derive it from the id instead."""
+    from datetime import datetime, timezone
+    pid = str(post_id or "")
+    if not pid.isdigit() or len(pid) < 15:
+        return ""
+    try:
+        if platform == "x":
+            ts = ((int(pid) >> 22) + 1288834974657) / 1000
+        elif platform == "tiktok":
+            ts = int(pid) >> 32
+        else:
+            return ""
+        if not 1.2e9 < ts < 2.2e9:
+            return ""
+        return datetime.fromtimestamp(ts, timezone.utc).isoformat()
+    except Exception:
+        return ""
 
 
 def _collect(channel, limit=10, windowed=True):

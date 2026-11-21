@@ -313,6 +313,17 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                 PROGRESS["done"] += 1
                 continue
 
+            # A busy X account can tweet more than one page between two
+            # scans (ม้าเฉียว / SundayBoyInvest: 50-80 a day). If not one of
+            # the fetched tweets was seen before, older ones may be missing:
+            # read a bigger page once (San, 22 Nov 2026 — full coverage).
+            if (ch["platform"] == "x" and len(posts or []) >= 10
+                    and not any(db.post_seen(ch["id"], p.get("post_id") or "")
+                                for p in posts)):
+                try:
+                    posts = collectors.collect(ch, limit=60) or posts
+                except Exception:
+                    pass
             fetched += len(posts or [])
             cid = ch.get("_resolved_channel_id")
             if cid and not ch.get("channel_id_cache"):
