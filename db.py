@@ -102,7 +102,27 @@ CREATE TABLE IF NOT EXISTS line_source (
     last_text TEXT
 );
 
+-- One row per scan round (written by scheduler.run_once) — the scan log.
+CREATE TABLE IF NOT EXISTS scan_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    trigger TEXT,
+    scope TEXT,                       -- all | exclusive | resume
+    total INTEGER DEFAULT 0,          -- channels planned
+    done INTEGER DEFAULT 0,           -- channels checked
+    fetched INTEGER DEFAULT 0,        -- posts returned by collectors
+    new_posts INTEGER DEFAULT 0,
+    hit_posts INTEGER DEFAULT 0,
+    hits INTEGER DEFAULT 0,
+    brand_hits INTEGER DEFAULT 0,
+    blocked INTEGER DEFAULT 0,
+    blocked_json TEXT,                -- [{kol, platform, url, error}]
+    status TEXT DEFAULT 'running'     -- running | done | stopped | error
+);
 CREATE INDEX IF NOT EXISTS idx_channel_kol ON channel(kol_id);
+CREATE INDEX IF NOT EXISTS idx_seen_scanned ON seen_post(scanned_at);
+CREATE INDEX IF NOT EXISTS idx_hit_detected ON hit(detected_at);
 CREATE INDEX IF NOT EXISTS idx_seen_channel ON seen_post(channel_id, post_id);
 CREATE INDEX IF NOT EXISTS idx_hit_status ON hit(handle_status, detected_at);
 """
@@ -646,3 +666,38 @@ def ai_stats_since(since_iso):
                             WHERE reviewed_at >= ? GROUP BY level""",
                          (since_iso,)).fetchall()
     return {r["level"]: r["n"] for r in rows}
+
+
+# ---------------------------------------------------------------- scan log
+def start_run(trigger, scope, total):
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _conn() as c:
+        cur = c.execute("""INSERT INTO scan_run(started_at,trigger,scope,total)
+                           VALUES(?,?,?,?)""", (now, trigger, scope, total))
+        return cur.lastrowid
+
+
+def finish_run(run_id, **fields):
+    if not run_id:
+        return
+    fields.setdefault("finished_at", datetime.now(timezone.utc).isoformat())
+    if "blocked_json" in fields and not isinstance(fields["blocked_json"], str):
+        fields["blocked_json"] = json.dumps(fields["blocked_json"],
+                                            ensure_ascii=False)
+    cols = ", ".join(f"{k}=?" for k in fields)
+    with _lock, _conn() as c:
+        c.execute(f"UPDATE scan_run SET {cols} WHERE id=?",
+                  list(fields.values()) + [run_id])
+
+
+def list_scan_runs(limit=500):
+    with _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM scan_run ORDER BY started_at DESC LIMIT ?",
+            (limit,)).fetchall()]
+
+
+def get_scan_run(run_id):
+    with _conn() as c:
+        r = c.execute("SELECT * FROM scan_run WHERE id=?", (run_id,)).fetchone()
+        return dict(r) if r else None

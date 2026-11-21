@@ -3,328 +3,927 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KOL Competitor Watch</title>
+<title>KOL Watch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
-  header{padding:16px 24px;background:#1e293b;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  h1{font-size:18px;margin:0}
-  .wrap{padding:20px 24px;max-width:1200px;margin:0 auto}
-  .cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-  .card{background:#1e293b;border-radius:10px;padding:14px 18px;min-width:120px}
-  .card .n{font-size:24px;font-weight:700}
-  .card .l{font-size:12px;color:#94a3b8}
-  .card.warn .n{color:#f87171}
-  button{background:#3b82f6;color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px}
-  button:disabled{opacity:.5;cursor:default}
-  button.ghost{background:#334155}
-  section{background:#1e293b;border-radius:10px;padding:16px;margin-bottom:18px}
-  h2{font-size:15px;margin:0 0 12px}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #334155;vertical-align:top}
-  th{color:#94a3b8;font-weight:600}
-  a{color:#60a5fa;word-break:break-all}
-  input,textarea{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:7px;font:inherit;width:100%;box-sizing:border-box}
-  label{font-size:12px;color:#94a3b8;display:block;margin:8px 0 3px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  select{background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:6px;padding:5px}
-  .badge{font-size:11px;padding:2px 7px;border-radius:99px;background:#334155}
-  .s-new{background:#b91c1c}.s-contacted{background:#b45309}.s-removed{background:#15803d}
-  .muted{color:#94a3b8;font-size:12px}
+/* SO! Web Kit shell (Rising Stars style) — tokens */
+:root{
+  --bg:#eef2f9; --panel:#f6f8fc; --card:#ffffff; --sb:#eaf0f9;
+  --ink:#0f1b2d; --muted:#6b7a90; --faint:#9aa8bd; --line:#e4eaf3;
+  --accent:#1e5eff; --accent-2:#1749cc; --soft:#e9f0ff; --hover:#e0e8f5;
+  --good:#10b981; --warm:#ff9500; --hot:#ff4d4f;
+  --font:'Anuphan', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --sb-w:252px; --r-sm:8px; --r:9px; --r-md:12px; --r-lg:16px; --pad:24px;
+  --shadow-1:0 1px 3px rgba(15,27,45,.08); --shadow-2:0 10px 30px -12px rgba(15,27,45,.25);
+  --shadow-hover:0 8px 18px rgba(15,27,45,.08); --line-hover:#b6c5da;
+  --ease-out-quart:cubic-bezier(.25,1,.5,1); --ease-out-quint:cubic-bezier(.22,1,.36,1);
+  --motion-fast:.14s; --motion-ui:.22s; --motion-enter:.32s; --t:var(--motion-fast) var(--ease-out-quart);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+svg{display:block}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.app{display:grid;grid-template-columns:var(--sb-w) 1fr;min-height:100vh}
+
+/* sidebar */
+.sidebar{background:var(--sb);border-right:1px solid var(--line);padding:18px 14px;display:flex;flex-direction:column;gap:2px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;overscroll-behavior:contain}
+.sidebar::-webkit-scrollbar{width:6px}.sidebar::-webkit-scrollbar-thumb{background:#cfd9e8;border-radius:3px}
+.brand{display:flex;gap:10px;align-items:center;padding:4px 8px 14px}
+.brand .mk{width:36px;height:36px;border-radius:var(--r);flex:0 0 auto;background:var(--accent);display:grid;place-items:center}
+.brand b{font-size:15px;font-weight:700;letter-spacing:-.2px;display:block;white-space:nowrap}
+.brand small{font-size:11.5px;font-weight:500;color:var(--muted);white-space:nowrap}
+.navgroup{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);padding:11px 10px 5px}
+.nav{display:flex;gap:9px;align-items:center;padding:7px 10px;min-height:40px;border-radius:var(--r);width:100%;text-align:left;
+  transition:background var(--t),color var(--t),transform var(--t)}
+.nav:hover{background:var(--hover);transform:translateX(2px)}
+.nav.active,.nav.active:hover{transform:none;background:var(--accent);color:#fff}
+.nav svg{width:18px;height:18px;flex:0 0 auto;stroke:#5b6b82;stroke-width:1.7;fill:none}
+.nav.active svg{stroke:#fff}
+.nav .tx{display:flex;flex-direction:column;line-height:1.18;min-width:0;flex:1}
+.nav .th{font-size:11.5px;font-weight:700;white-space:nowrap}
+.nav .en{font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}
+.nav.active .en{color:#dbe6ff}
+.nav .badge{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--hot);color:#fff}
+.nav.active .badge{background:#fff;color:var(--accent)}
+.planbox{margin-top:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:11px 12px}
+.planbox small{display:block;font-size:10.5px;color:var(--muted)}
+.planbox b{font-size:13px}
+.prog{height:5px;background:var(--panel);border-radius:3px;overflow:hidden;margin-top:7px}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .4s}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block;margin-right:5px;flex:0 0 auto}
+.dot.run{background:var(--accent);animation:pulse 1.2s infinite}.dot.off{background:var(--faint)}.dot.bad{background:var(--hot)}
+@keyframes pulse{50%{opacity:.35}}
+
+/* topbar */
+.main{display:flex;flex-direction:column;min-width:0}
+.topbar{display:flex;gap:10px;align-items:center;padding:12px var(--pad);min-height:64px;background:var(--card);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.search{flex:1 1 140px;min-width:0;max-width:420px;display:flex;align-items:center;gap:8px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);padding:8px 12px}
+.search input{border:0;background:0;outline:0;font:inherit;flex:1;min-width:0;color:var(--ink)}
+.pill{display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:7px 12px;font-size:12.5px;color:var(--muted);white-space:nowrap;flex:0 0 auto}
+.pill b{color:var(--ink)}
+.topbar .btn,.topbar .user{flex:0 0 auto}
+.user{display:flex;gap:9px;align-items:center;margin-left:auto}
+.user .av{width:34px;height:34px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+.user small{display:block;font-size:11px;color:var(--muted)}
+.user a{font-size:11px;color:var(--muted);text-decoration:underline}
+
+/* buttons */
+.btn{display:inline-flex;gap:7px;align-items:center;justify-content:center;background:var(--accent);color:#fff;border-radius:var(--r);
+  padding:9px 15px;font-weight:700;font-size:13px;white-space:nowrap;transition:background var(--t),transform var(--t),box-shadow var(--t)}
+.btn:hover{background:var(--accent-2);transform:translateY(-1px);box-shadow:0 6px 14px rgba(15,27,45,.1)}
+.btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--panel)}
+.btn.sm{padding:6px 11px;font-size:12px}
+.btn.danger{background:#fff;color:#b42318;border:1px solid #fecdca}
+.btn:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+
+/* content */
+.content{padding:var(--pad) 30px 48px;width:min(100%,1500px);margin:0 auto}
+@keyframes surface-enter{0%{opacity:0;transform:translateY(8px) scale(.995)}to{opacity:1;transform:none}}
+.view > *{animation:surface-enter var(--motion-enter) var(--ease-out-quint) both}
+.view > *:nth-child(2){animation-delay:.03s}.view > *:nth-child(3){animation-delay:.06s}.view > *:nth-child(4){animation-delay:.09s}
+h2.page{font-size:32px;font-weight:700;letter-spacing:-.5px;line-height:1.15}
+.page-sub{color:var(--muted);font-size:13.5px;font-weight:600;margin-top:5px;margin-bottom:18px;max-width:900px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px;margin-bottom:16px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;text-align:left;display:block;width:100%;
+  transition:border-color var(--motion-ui) var(--ease-out-quart),box-shadow var(--motion-ui) var(--ease-out-quart)}
+.tile:hover{border-color:var(--line-hover);box-shadow:var(--shadow-hover)}
+.tile .lab{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;display:flex;gap:7px;align-items:center}
+.tile .num{font-size:26px;font-weight:700;letter-spacing:-.4px;line-height:1.1}
+.tile .sub{font-size:11.5px;font-weight:600;color:var(--faint);margin-top:4px}
+.tile.alert{border-color:#fecdca;background:#fffbfa}.tile.alert .num{color:#d92d20}
+.tile.warn .num{color:#b54708}.tile.ok .num{color:#067647}
+.tile .go{font-size:11.5px;font-weight:700;color:var(--accent);margin-top:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;margin-bottom:14px}
+.card .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.card h3{font-size:15px;font-weight:700;line-height:1.25}
+.card .hd small{color:var(--muted);font-size:12px;font-weight:600;display:block;margin-top:3px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px}
+.grid2e{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid2>*,.grid2e>*{min-width:0}
+.muted{color:var(--muted)}.faint{color:var(--faint)}.small{font-size:12px}
+.empty{padding:26px 10px;text-align:center;color:var(--muted);font-size:13px}
+
+/* tables */
+.tblwrap{overflow-x:auto;margin:0 -4px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;font-weight:700;letter-spacing:.3px;color:var(--faint);white-space:nowrap;background:var(--card);position:sticky;top:0}
+td.num,th.num{text-align:right;white-space:nowrap}
+td.nw{white-space:nowrap}
+tbody tr{transition:background-color var(--t),box-shadow var(--t)}
+tbody tr.click{cursor:pointer}
+tbody tr:hover{background:var(--panel);box-shadow:inset 3px 0 0 var(--accent)}
+tr:last-child td{border-bottom:0}
+.cap{max-width:520px;color:#334155;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.link{color:var(--accent);font-weight:600}
+.link:hover{text-decoration:underline}
+
+/* status chips */
+.st{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.st.ok{background:#e9f9f0;color:#0a7a45}.st.wait{background:#fff4e8;color:#a5590a}.st.off{background:#f0f2f6;color:#8090a5}
+.st.hot{background:#fee4e2;color:#b42318}.st.info{background:var(--soft);color:var(--accent-2)}
+.chip{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--panel);
+  border:1px solid var(--line);margin:2px 3px 2px 0;white-space:nowrap}
+.chip.k{background:#fff4e8;border-color:#fde3c3;color:#93460a}
+.chip.b{background:#e9f9f0;border-color:#c6efd9;color:#0a6a3d}
+.xb{font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--ink);color:#fff;margin-left:5px;vertical-align:1px}
+.xb.non{background:#e6ebf2;color:#5b6b82}
+.pf{display:inline-flex;gap:6px;align-items:center;white-space:nowrap;font-weight:600}
+.pf i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+
+/* filters */
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.seg{display:inline-flex;max-width:100%;overflow-x:auto;gap:3px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:3px}
+.seg button{padding:6px 12px;border-radius:var(--r-sm);font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:var(--shadow-1)}
+.seg button .c{font-size:11px;color:var(--faint);margin-left:4px}
+.inp,select.inp{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;font:inherit;font-size:13px;color:var(--ink);min-width:0}
+.inp:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;font-size:12.5px;color:var(--muted)}
+
+/* banner / status */
+.banner{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:16px 18px;margin-bottom:14px}
+.banner .big{display:flex;gap:12px;align-items:center;flex:1 1 300px}
+.banner .ring{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:#e9f9f0;flex:0 0 auto}
+.banner .ring.run{background:var(--soft)}.banner .ring.bad{background:#fee4e2}
+.banner h4{font-size:17px;font-weight:700}
+.banner .facts{display:flex;gap:22px;flex-wrap:wrap}
+.banner .facts div small{display:block;font-size:11px;font-weight:700;color:var(--faint)}
+.banner .facts div b{font-size:14px}
+.note{border-radius:var(--r);padding:10px 14px;font-size:13px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start}
+.note.bad{background:#fef3f2;border:1px solid #fecdca;color:#912018}
+.note.info{background:var(--soft);border:1px solid #d3e0ff;color:#1d3a8a}
+
+/* to-do list */
+.todo{display:flex;flex-direction:column;gap:8px}
+.todo a{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);transition:border-color var(--t),background var(--t)}
+.todo a:hover{border-color:var(--line-hover);background:var(--panel)}
+.todo .n{font-size:18px;font-weight:700;min-width:44px;text-align:center}
+.todo .t b{display:block;font-size:13px}.todo .t small{color:var(--muted);font-size:12px}
+.todo .arr{margin-left:auto;color:var(--faint)}
+.feed{display:flex;flex-direction:column}
+.feed .it{display:flex;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.feed .it:last-child{border-bottom:0}
+.feed .it:hover{background:var(--panel)}
+.feed .ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;font-size:13px;font-weight:700}
+.feed .ico.hit{background:#fff4e8;color:#a5590a}.feed .ico.ai{background:#fee4e2;color:#b42318}
+.feed .bd{min-width:0;flex:1}
+.feed .bd b{font-size:13px}.feed .bd p{font-size:12.5px;color:#475467;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* charts */
+.chart{width:100%;height:auto}
+.chart .bar{fill:var(--accent);opacity:.85}.chart .bar:hover{opacity:1}
+.chart .hit{fill:var(--warm)}
+.chart text{font-family:var(--font);font-size:10px;fill:var(--faint)}
+.legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);font-weight:600;margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.hbar{display:grid;grid-template-columns:90px 1fr 54px;gap:8px;align-items:center;font-size:12.5px;margin:6px 0}
+.hbar .tr{height:8px;background:var(--panel);border-radius:4px;overflow:hidden}
+.hbar .tr i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.hbar .v{text-align:right;font-weight:600}
+
+/* channel matrix */
+.mx td{vertical-align:middle}
+.mx .cell{display:flex;flex-direction:column;gap:3px}
+.mx .c{display:inline-flex;gap:5px;align-items:center;font-size:11.5px;font-weight:600;padding:3px 7px;border-radius:7px;background:var(--panel);
+  border:1px solid var(--line);white-space:nowrap;cursor:pointer}
+.mx .c:hover{border-color:var(--accent)}
+.mx .c i{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.mx .c.blocked{background:#fef3f2;border-color:#fecdca}.mx .c.blocked i{background:var(--hot)}
+.mx .c.ext{border-style:dashed}
+.mx .c.unscanned{opacity:.55}
+.mx .none{color:#d0d7e2}
+
+/* drawer */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(760px,100vw);background:var(--card);z-index:30;box-shadow:-20px 0 40px -20px rgba(15,27,45,.3);
+  transform:translateX(100%);transition:transform var(--motion-enter) var(--ease-out-quint);display:flex;flex-direction:column}
+body[data-drawer="open"] .drawer{transform:none}
+.drawer .dh{display:flex;gap:12px;align-items:flex-start;padding:18px 22px;border-bottom:1px solid var(--line)}
+.drawer .dh h3{font-size:18px;font-weight:700}
+.drawer .dh small{color:var(--muted);font-size:12.5px;font-weight:600}
+.drawer .dh .x{margin-left:auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);display:grid;place-items:center;flex:0 0 auto}
+.drawer .db{padding:18px 22px;overflow-y:auto;flex:1}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:8px 14px;font-size:13px;margin-bottom:14px}
+.kv dt{color:var(--muted);font-weight:600}.kv dd{word-break:break-word}
+.fulltext{white-space:pre-wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;font-size:13px;line-height:1.6;max-height:420px;overflow:auto}
+.scrim{position:fixed;inset:0;background:rgba(15,27,45,.38);z-index:19;opacity:0;visibility:hidden;transition:opacity var(--motion-ui),visibility var(--motion-ui)}
+body[data-drawer="open"] .scrim,body[data-menu="open"] .scrim{opacity:1;visibility:visible}
+body[data-drawer="open"] .scrim{z-index:29}
+.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.mini div{background:var(--panel);border-radius:var(--r);padding:10px 12px}
+.mini small{display:block;font-size:11px;font-weight:700;color:var(--faint)}.mini b{font-size:18px}
+
+/* forms (settings) */
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.form label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px}
+.form .full{grid-column:1/-1}
+.form input,.form textarea,.form select{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px;font:inherit;font-size:13px;color:var(--ink)}
+.form textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5}
+.form .hint{font-size:11.5px;color:var(--faint);margin-top:4px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;
+  font-size:13px;font-weight:600;opacity:0;transition:all var(--motion-ui);z-index:50;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%)}
+
+/* mobile */
+.burger{display:none;width:38px;height:38px;border:1px solid var(--line);border-radius:var(--r-sm);flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:0 0 auto}
+.burger i{width:16px;height:1.6px;background:var(--ink);border-radius:2px}
+@media (max-width:1250px){.pill.next{display:none}}
+@media (max-width:1100px){.grid2,.grid2e{grid-template-columns:minmax(0,1fr)}.user>div{display:none}}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:fixed;inset:0 auto 0 0;width:var(--sb-w);z-index:20;transform:translateX(-100%);transition:transform var(--motion-enter) var(--ease-out-quint);box-shadow:var(--shadow-2)}
+  body[data-menu="open"] .sidebar{transform:none}
+  .burger{display:flex}.topbar{padding:10px 14px;min-height:56px}.content{padding:16px 14px 40px}
+  h2.page{font-size:24px}.pill{display:none}.btn .lbl{display:none}
+  .form{grid-template-columns:1fr}.kv{grid-template-columns:1fr}
+  .tiles{grid-template-columns:1fr 1fr}.tile .num{font-size:22px}.banner .facts{gap:14px}.mini{grid-template-columns:1fr 1fr}
+  .search{flex:1 1 60px}
+}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important}}
 </style>
 </head>
-<body>
-<header>
-  <h1>🛡️ KOL Competitor-Keyword Watch</h1>
-  <button id="syncBtn" class="ghost">↻ Sync จาก Sheet</button>
-  <button id="runBtn">▶ สแกนเดี๋ยวนี้</button>
-  <button id="stopBtn" class="ghost" style="display:none">■ หยุด</button>
-  <span id="status" class="muted"></span>
-  <a href="/logout" style="margin-left:auto;color:#94a3b8;font-size:13px">ออกจากระบบ</a>
-</header>
-<div id="lineErr" style="display:none;background:#7f1d1d;color:#fee2e2;padding:10px 24px;font-size:13px"></div>
-<div class="wrap">
-  <div class="cards" id="cards"></div>
-
-  <div style="display:flex;gap:8px;margin-bottom:14px">
-    <button id="tabWatchBtn">🛡️ เฝ้าระวัง</button>
-    <button id="tabBrandBtn" class="ghost">📊 รายงานลูกค้า</button>
-    <button id="tabAiBtn" class="ghost">🤖 AI ตรวจโพสต์</button>
-    <button id="tabPostsBtn" class="ghost">📰 โพสต์ทั้งหมด</button>
-  </div>
-
-  <div id="tabBrand" style="display:none">
-    <section>
-      <h2>📊 รายงานแบรนด์ลูกค้า — จัดกลุ่มตาม KOL
-        <button id="brandBackfillBtn" class="ghost" style="float:right;font-size:13px">🔍 ค้นย้อนหลังจากโพสต์ที่ดึงแล้ว</button>
-      </h2>
-      <div class="muted" id="brandInfo" style="margin-bottom:8px"></div>
-      <div id="brandList"></div>
-      <div class="muted" id="brandEmpty" style="display:none">ยังไม่เจอโพสต์ที่พูดถึงแบรนด์ลูกค้า</div>
-    </section>
-  </div>
-
-  <div id="tabAi" style="display:none">
-    <section>
-      <h2>🤖 AI อ่านทุกโพสต์ — พูดถึงคู่แข่งไหม / สอนเทรดหุ้นนอกไหม</h2>
-      <div class="muted" id="aiInfo" style="margin-bottom:10px"></div>
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        <button class="ghost aiF" data-l="urgent,watch">ทั้งหมด</button>
-        <button class="ghost aiF" data-l="urgent">🔴 ด่วน</button>
-        <button class="ghost aiF" data-l="watch">🟠 เฝ้าระวัง</button>
-      </div>
-      <table id="aiTbl"><thead><tr>
-        <th>ระดับ</th><th>KOL</th><th>คู่แข่ง</th><th>เหตุผล / หลักฐาน</th><th>โพสต์</th>
-      </tr></thead><tbody></tbody></table>
-      <div class="muted" id="aiEmpty" style="display:none">ยังไม่มีโพสต์ที่ AI ติดธง</div>
-      <p class="muted" style="margin-top:12px">🔴 ด่วน = โปรโมต/ให้ลิงก์/ชวนเปิดบัญชีคู่แข่ง หรือสอนเทรดหุ้นนอกผ่านเจ้าอื่น → เด้ง LINE ป้ายแดงทันที ·
-      🟠 เฝ้าระวัง = เอ่ยถึงแต่ไม่ได้โปรโมต (ไม่เด้ง LINE) · ตัว AI รันบน sanmini (Ollama gemma4) อ่านจากแคปชันเท่านั้น ไม่เห็นรูป/คลิป</p>
-    </section>
-  </div>
-
-  <div id="tabPosts" style="display:none">
-    <section>
-      <h2>📰 โพสต์ทั้งหมดที่ดึงมา
-        <a href="/api/posts.csv" style="float:right;font-size:13px">⬇ ดาวน์โหลด CSV</a>
-      </h2>
-      <div class="muted" id="postsInfo" style="margin-bottom:8px"></div>
-      <table id="posts"><thead><tr>
-        <th>วันที่โพส</th><th>KOL</th><th>แพลตฟอร์ม</th><th>ข้อความ</th><th>ลิงก์</th><th></th>
-      </tr></thead><tbody></tbody></table>
-      <div class="muted" id="postsEmpty" style="display:none">ยังไม่มีข้อมูล — กด "สแกนเดี๋ยวนี้" ก่อน แล้วข้อมูลจะเข้ามาที่นี่</div>
-    </section>
-  </div>
-
-  <div id="tabWatch">
-  <section>
-    <h2>⚠️ โพสต์ที่เจอคำคู่แข่ง</h2>
-    <table id="hits"><thead><tr>
-      <th>เวลา</th><th>KOL</th><th>แพลตฟอร์ม</th><th>คำ</th><th>ข้อความ</th><th>ลิงก์</th><th>ทีมตัดสิน</th><th>สถานะ</th>
-    </tr></thead><tbody></tbody></table>
-    <div class="muted" id="hitsEmpty" style="display:none">ยังไม่พบโพสต์ที่ผิด 🎉</div>
-  </section>
-
-  <section>
-    <h2>❌ ช่องที่เช็กไม่ได้ (private/บล็อก)</h2>
-    <table id="blocked"><thead><tr><th>KOL</th><th>แพลตฟอร์ม</th><th>ลิงก์</th><th>error</th></tr></thead><tbody></tbody></table>
-    <div class="muted" id="blockedEmpty" style="display:none">— ไม่มี —</div>
-  </section>
-
-  <section>
-    <h2>🔗 ลิงก์ใน Sheet ที่อ่านไม่ออก (ให้ทีมไปแก้ใน Sheet)</h2>
-    <table id="unres"><thead><tr><th>KOL</th><th>แพลตฟอร์ม</th><th>ค่าใน Sheet</th><th>เหตุผล</th></tr></thead><tbody></tbody></table>
-    <div class="muted" id="unresEmpty" style="display:none">— ไม่มี —</div>
-  </section>
-
-  <section>
-    <h2>⚙️ ตั้งค่า</h2>
-    <div class="grid">
-      <div><label>Google Sheet ID / URL</label><input id="sheet_id"></div>
-      <div><label>เวลาสแกน (คั่นด้วย ,)</label><input id="run_times" placeholder="08:00,16:00"></div>
-      <div><label>LINE channel access token (เว้นว่าง=ไม่เปลี่ยน)</label><input id="line_token" placeholder="••••••"></div>
-      <div>
-        <label>โหมดส่ง LINE</label>
-        <select id="line_mode" style="width:100%">
-          <option value="broadcast">Broadcast — ทุกคนที่ add bot</option>
-          <option value="push">Push — เฉพาะปลายทางด้านล่าง</option>
-        </select>
-      </div>
-      <div>
-        <label>LINE ปลายทาง (เฉพาะโหมด Push: userId/groupId)</label><input id="line_to">
-        <div id="lineSources" class="muted" style="margin-top:6px;font-size:12px"></div>
-      </div>
-      <div><label>จำนวนโพสต์ที่ดึงต่อช่อง/รอบ (ยิ่งน้อยยิ่งถูก — แนะนำ 3)</label><input id="posts_per_check"></div>
-      <div><label>เปิดสแกนอัตโนมัติ (1/0)</label><input id="auto_enabled"></div>
-      <div><label>แพลตฟอร์มที่สแกน (คั่นด้วย , — ตัด facebook ออกลดค่าใช้จ่าย ~80%)</label><input id="scan_platforms"></div>
-      <div><label>ใช้ Brightdata เป็น fallback เมื่อ Apify หมด (1/0 — แนะนำ 0 กันเงินไหล)</label><input id="enable_bd_fallback"></div>
+<body data-menu="closed">
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="mk"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div><b>KOL Watch</b><small>เฝ้าคู่แข่ง · Webull</small></div>
     </div>
-    <label>Watchlist คู่แข่ง (JSON: {"คำหลัก":["variant",...]})</label>
-    <textarea id="watchlist" rows="5"></textarea>
-    <label>คำกว้างที่นับเป็นคู่แข่งเฉพาะโพสต์ที่ไม่พูดถึงแบรนด์ลูกค้า (JSON เหมือน Watchlist เช่น {"หุ้นนอก":["หุ้นต่างประเทศ"]} — เว้น {} = ปิด)</label>
-    <textarea id="watchlist_unbranded" rows="2"></textarea>
-    <label>แบรนด์ลูกค้าที่จะ Report (JSON: {"Webull":["webull","วีบลู",...]})</label>
-    <textarea id="client_brands" rows="3"></textarea>
-    <label>จำนวน KOL ต่อบับเบิล LINE (รายงานแบรนด์)</label>
-    <input id="brand_kols_per_bubble">
-    <div class="grid">
-      <div><label>🤖 เปิด AI อ่านโพสต์ (1/0)</label><input id="ai_review_enabled"></div>
-      <div><label>🤖 เด้ง LINE ป้ายแดงเมื่อ AI เจอ "ด่วน" (1/0)</label><input id="ai_alerts_enabled"></div>
-      <div><label>🤖 เด้งเฉพาะโพสต์ที่ลงภายใน (วัน)</label><input id="ai_alert_max_age_days"></div>
-    </div>
-    <label>🤖 กติกาให้ AI (เว้นว่าง = ใช้กติกามาตรฐาน · เขียนภาษาคนได้เลย เช่น นับอะไรเป็นคู่แข่ง/อะไรไม่นับ)</label>
-    <textarea id="ai_review_policy" rows="4" placeholder="(ใช้กติกามาตรฐาน)"></textarea>
-    <div style="margin-top:12px"><button id="saveBtn">บันทึกการตั้งค่า</button></div>
-  </section>
+    <nav id="navroot" aria-label="เมนูหลัก"></nav>
+    <div class="planbox" id="planbox"><small>สถานะการตรวจ</small><b>กำลังโหลด…</b></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="burger" id="burger" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="sidebar"><i></i><i></i><i></i></button>
+      <form class="search" id="gsearch">
+        <svg width="16" height="16" fill="none" stroke="#8090a5" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input id="gq" placeholder="ค้นโพสต์: ชื่อ KOL, คำ, ลิงก์…" aria-label="ค้นหาโพสต์">
+      </form>
+      <div class="pill next" id="nextPill">รอบถัดไป <b>—</b></div>
+      <button class="btn ghost sm" id="syncBtn" title="ดึงรายชื่อ KOL/ลิงก์ล่าสุดจาก Google Sheet"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg><span class="lbl">ซิงก์ชีต</span></button>
+      <button class="btn sm" id="runBtn"><svg viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z"/></svg><span class="lbl">ตรวจเดี๋ยวนี้</span></button>
+      <button class="btn danger sm" id="stopBtn" style="display:none"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span class="lbl">หยุด</span></button>
+      <div class="user"><div class="av">SO</div><div><b style="font-size:13px">Sociology</b><small><a href="/logout">ออกจากระบบ</a></small></div></div>
+    </header>
+    <main class="content"><div class="view" id="view"></div></main>
   </div>
 </div>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dh"><div><h3 id="dTitle"></h3><small id="dSub"></small></div>
+    <button class="x" id="dClose" aria-label="ปิด"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+<div class="toast" id="toast"></div>
+
 <script>
-const $=s=>document.querySelector(s);
-async function jpost(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});return r.json();}
-function esc(s){return (s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
-// Render any stored UTC timestamp in Thai time (GMT+7). Date-only values
-// (YYYY-MM-DD, e.g. posted_at from some platforms) are kept as-is.
-function fmtTH(iso, withTime=true){
-  if(!iso) return "—";
+/* ═══════════════════════════ helpers ═══════════════════════════ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = n => (n ?? 0).toLocaleString('th-TH');
+const J = async u => { const r = await fetch(u); if (r.status === 401) location.href = '/login'; return r.json(); };
+const P = async (u, b) => (await fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b || {})})).json();
+function fmtTH(iso, time = true){
+  if(!iso) return '—';
   if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
-  const d=new Date(iso); if(isNaN(d)) return iso;
-  const o={timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'};
-  if(withTime){o.hour='2-digit';o.minute='2-digit';o.hour12=false;}
-  return new Intl.DateTimeFormat('sv-SE',o).format(d);
+  const d = new Date(iso); if(isNaN(d)) return esc(iso);
+  const o = {timeZone:'Asia/Bangkok', day:'numeric', month:'short'};
+  if(time){ o.hour = '2-digit'; o.minute = '2-digit'; o.hour12 = false; }
+  if(d.getFullYear() !== new Date().getFullYear()) o.year = '2-digit';
+  return new Intl.DateTimeFormat('th-TH', o).format(d);
 }
-
-async function refresh(){
-  const d=await (await fetch("/api/state")).json();
-  const c=d.counts;
-  $("#cards").innerHTML=`
-   <div class="card"><div class="n">${c.kols}</div><div class="l">KOL</div></div>
-   <div class="card"><div class="n">${c.channels}</div><div class="l">ช่องทาง</div></div>
-   <div class="card ${d.hits.length?'warn':''}"><div class="n">${d.hits.length}</div><div class="l">เจอคำคู่แข่ง</div></div>
-   <div class="card ${c.blocked?'warn':''}"><div class="n">${c.blocked}</div><div class="l">เช็กไม่ได้</div></div>
-   <div class="card"><div class="n">${d.unresolved.length}</div><div class="l">ลิงก์เสีย</div></div>
-   ${d.ai?`<div class="card ${(d.ai.last24h.urgent||0)?'warn':''}"><div class="n">${d.ai.last24h.urgent||0}</div><div class="l">🤖 AI ด่วน 24 ชม.</div></div>
-   <div class="card ${(d.ai.agent_quiet_min==null||d.ai.agent_quiet_min>20)?'warn':''}"><div class="n" style="font-size:16px">${d.ai.agent_quiet_min==null?'ยังไม่ต่อ':(d.ai.agent_quiet_min>20?'เงียบ '+d.ai.agent_quiet_min+' นาที':'🟢 ออนไลน์')}</div><div class="l">AI agent · รออ่าน ${d.ai.pending}</div></div>`:''}
-   <div class="card"><div class="l">แยกแพลตฟอร์ม</div><div class="muted">${Object.entries(c.by_platform).map(([k,v])=>k+":"+v).join("  ")}</div></div>`;
-  const pr=d.progress;
-  $("#status").textContent=pr.running?`กำลังสแกน… ${pr.done}/${pr.total} (${pr.current})`:(pr.last_run?("รอบล่าสุด: "+fmtTH(pr.last_run)+" น. (GMT+7)"):"");
-  const le=d.settings.line_last_error||"";
-  if(le){$("#lineErr").style.display="block";$("#lineErr").innerHTML=`⚠️ LINE ส่งล้มเหลวล่าสุด: ${esc(le)} — token จะ auto-mint ใหม่อัตโนมัติรอบหน้า`;}
-  else $("#lineErr").style.display="none";
-  $("#runBtn").disabled=pr.running;
-  $("#runBtn").style.display=pr.running?"none":"";
-  $("#stopBtn").style.display=pr.running?"":"none";
-
-  const hb=$("#hits tbody");hb.innerHTML="";
-  $("#hitsEmpty").style.display=d.hits.length?"none":"block";
-  for(const h of d.hits){
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td class="muted">${fmtTH(h.detected_at)}</td>
-     <td>${esc(h.kol_name)}</td><td>${esc(h.platform)}</td>
-     <td><span class="badge">${esc(h.matched_keyword)}</span></td>
-     <td>${esc((h.snippet||"").slice(0,90))}</td>
-     <td><a href="${esc(h.post_url)}" target="_blank">เปิด</a></td>
-     <td>${h.verdict?`<span class="badge" style="${h.verdict==='competitor'?'background:#FEE4E2;color:#B42318':'background:#ECFDF3;color:#067647'}">${h.verdict==='competitor'?'🚨 คู่แข่ง':'✓ ผ่าน'}</span><div class="muted" style="font-size:11px">${esc(h.verdict_by||'')} · ${fmtTH(h.verdict_at)}</div>`:'<span class="muted">ยังไม่กด</span>'}</td>
-     <td><select data-id="${h.id}">
-       ${["new","contacted","removed","ignored"].map(s=>`<option value="${s}" ${h.handle_status===s?"selected":""}>${s}</option>`).join("")}
-     </select></td>`;
-    hb.appendChild(tr);
-  }
-  hb.querySelectorAll("select").forEach(sel=>sel.onchange=()=>jpost("/api/hit_status",{id:sel.dataset.id,status:sel.value}));
-
-  const bb=$("#blocked tbody");bb.innerHTML="";
-  $("#blockedEmpty").style.display=d.blocked.length?"none":"block";
-  for(const b of d.blocked) bb.insertAdjacentHTML("beforeend",
-    `<tr><td>${esc(b.kol)}</td><td>${esc(b.platform)}</td><td><a href="${esc(b.url)}" target="_blank">${esc(b.url).slice(0,50)}</a></td><td class="muted">${esc((b.error||"").slice(0,80))}</td></tr>`);
-
-  const ub=$("#unres tbody");ub.innerHTML="";
-  $("#unresEmpty").style.display=d.unresolved.length?"none":"block";
-  for(const u of d.unresolved) ub.insertAdjacentHTML("beforeend",
-    `<tr><td>${esc(u.kol_name)}</td><td>${esc(u.platform)}</td><td class="muted">${esc((u.raw_value||"").slice(0,55))}</td><td class="muted">${esc(u.reason)}</td></tr>`);
-
-  const s=d.settings;
-  if(document.activeElement.tagName!=="INPUT"&&document.activeElement.tagName!=="TEXTAREA"){
-    $("#sheet_id").value=s.sheet_id;$("#run_times").value=s.run_times;
-    $("#line_to").value=s.line_to;$("#line_mode").value=s.line_mode||"broadcast";$("#posts_per_check").value=s.posts_per_check;
-    $("#auto_enabled").value=s.auto_enabled;
-    $("#scan_platforms").value=s.scan_platforms||"";$("#enable_bd_fallback").value=s.enable_bd_fallback||"0";
-    try{$("#client_brands").value=JSON.stringify(JSON.parse(s.client_brands||"{}"),null,2);}catch(e){$("#client_brands").value=s.client_brands||"";}
-    $("#brand_kols_per_bubble").value=s.brand_kols_per_bubble||"5";
-    $("#ai_review_enabled").value=s.ai_review_enabled||"1";$("#ai_alerts_enabled").value=s.ai_alerts_enabled||"1";
-    $("#ai_alert_max_age_days").value=s.ai_alert_max_age_days||"3";$("#ai_review_policy").value=s.ai_review_policy||"";
-    try{$("#watchlist").value=JSON.stringify(JSON.parse(s.watchlist),null,2);}catch(e){$("#watchlist").value=s.watchlist;}
-    try{$("#watchlist_unbranded").value=JSON.stringify(JSON.parse(s.watchlist_unbranded||"{}"),null,2);}catch(e){$("#watchlist_unbranded").value=s.watchlist_unbranded||"{}";}
-    $("#line_token").placeholder=s.line_token_set?"•••• (ตั้งไว้แล้ว)":"ยังไม่ตั้ง";
-  }
-  // brand-report list — grouped by KOL
-  const bh=d.brand_hits||[];
-  $("#brandEmpty").style.display=bh.length?"none":"block";
-  $("#brandInfo").textContent=bh.length?`เจอ ${bh.length} โพสต์ จาก ${new Set(bh.map(h=>h.kol_name)).size} KOL`:"";
-  const groups={}; for(const h of bh){(groups[h.kol_name]=groups[h.kol_name]||[]).push(h);}
-  $("#brandList").innerHTML=Object.entries(groups).map(([kol,arr],i)=>`
-    <div style="background:#0f172a;border-radius:8px;padding:12px 14px;margin-bottom:10px">
-      <div style="font-weight:600">${i+1}. ${esc(kol)}</div>
-      ${arr.map(h=>`<div style="margin:6px 0 0 14px;font-size:13px">
-         <span class="badge">${esc(h.matched_keyword)}</span>
-         <span class="muted">${esc(h.platform)} · ${esc(fmtTH(h.posted_at,true))}</span><br>
-         <a href="${esc(h.post_url)}" target="_blank" style="font-size:12px">${esc(h.post_url).slice(0,80)}</a>
-       </div>`).join("")}
-    </div>`).join("");
-
-  const ls=$("#lineSources");
-  if(!d.line_sources.length){
-    ls.innerHTML='ยังไม่มี id ที่จับได้ — ตั้ง Webhook URL = <code>/webhook</code> ใน LINE Developers แล้วพิมพ์ในกลุ่ม';
-  } else {
-    ls.innerHTML='id ที่จับได้จาก webhook (กดเพื่อใส่ในช่องด้านบน):<br>'+
-      d.line_sources.map(s=>`<a href="#" data-id="${esc(s.source_id)}" class="lsrc">[${esc(s.source_type)}] ${esc(s.source_id).slice(0,18)}…</a> <span class="muted">${esc((s.last_text||'').slice(0,30))}</span>`).join('<br>');
-    ls.querySelectorAll('a.lsrc').forEach(a=>a.onclick=e=>{e.preventDefault();$("#line_to").value=a.dataset.id;});
-  }
+function ago(iso){
+  if(!iso) return '—';
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if(isNaN(s)) return '—';
+  if(s < 0){ const m = Math.round(-s/60); return m < 60 ? `อีก ${m} นาที` : `อีก ${Math.round(m/60)} ชม.`; }
+  if(s < 90) return 'เมื่อสักครู่';
+  if(s < 3600) return `${Math.round(s/60)} นาทีที่แล้ว`;
+  if(s < 86400) return `${Math.round(s/3600)} ชม.ที่แล้ว`;
+  return `${Math.round(s/86400)} วันที่แล้ว`;
 }
-$("#syncBtn").onclick=async()=>{$("#syncBtn").disabled=true;const r=await jpost("/api/sync",{sheet_id:$("#sheet_id").value});alert(r.error?("ผิดพลาด: "+r.error):`Sync สำเร็จ: ${r.kols} KOL, ${r.channels} ช่อง (ใหม่ ${r.new_channels}), ลิงก์เสีย ${r.unresolved}, ยกเลิกสัญญา ${r.cancelled||0}, หายจากชีต ${r.removed||0}`);$("#syncBtn").disabled=false;refresh();};
-$("#runBtn").onclick=async()=>{await jpost("/api/run",{});refresh();};
-$("#stopBtn").onclick=async()=>{$("#stopBtn").disabled=true;await jpost("/api/stop",{});$("#stopBtn").disabled=false;refresh();};
-$("#brandBackfillBtn").onclick=async()=>{$("#brandBackfillBtn").disabled=true;$("#brandBackfillBtn").textContent="กำลังค้น…";const r=await jpost("/api/brand_backfill",{});$("#brandBackfillBtn").disabled=false;$("#brandBackfillBtn").textContent="🔍 ค้นย้อนหลังจากโพสต์ที่ดึงแล้ว";alert(r.error?r.error:`สแกน ${r.scanned} โพสต์ — เจอใหม่ ${r.added} รายการ`);refresh();};
-$("#saveBtn").onclick=async()=>{
-  const b={sheet_id:$("#sheet_id").value,run_times:$("#run_times").value,line_to:$("#line_to").value,
-    line_mode:$("#line_mode").value,
-    posts_per_check:$("#posts_per_check").value,auto_enabled:$("#auto_enabled").value,watchlist:$("#watchlist").value,
-    watchlist_unbranded:$("#watchlist_unbranded").value,
-    scan_platforms:$("#scan_platforms").value,enable_bd_fallback:$("#enable_bd_fallback").value,
-    client_brands:$("#client_brands").value,brand_kols_per_bubble:$("#brand_kols_per_bubble").value,
-    ai_review_enabled:$("#ai_review_enabled").value,ai_alerts_enabled:$("#ai_alerts_enabled").value,
-    ai_alert_max_age_days:$("#ai_alert_max_age_days").value,ai_review_policy:$("#ai_review_policy").value};
-  if($("#line_token").value.trim())b.line_token=$("#line_token").value.trim();
-  const r=await jpost("/api/settings",b);alert(r.error?r.error:"บันทึกแล้ว");$("#line_token").value="";refresh();
+function dur(a, b){
+  if(!a || !b) return '—';
+  const m = Math.round((new Date(b) - new Date(a)) / 60000);
+  return m < 60 ? `${m} นาที` : `${Math.floor(m/60)} ชม. ${m%60} นาที`;
+}
+const PF = {facebook:['Facebook','#1877f2'], instagram:['Instagram','#e1306c'], tiktok:['TikTok','#111111'], youtube:['YouTube','#ff0000'],
+            x:['X','#4b5563'], threads:['Threads','#7c3aed'], lemon8:['Lemon8','#e5b100']};
+const pf = p => `<span class="pf"><i style="background:${(PF[p]||[,'#999'])[1]}"></i>${esc((PF[p]||[p])[0])}</span>`;
+const xb = excl => excl ? '<span class="xb">EXCL</span>' : '<span class="xb non">NON</span>';
+const chips = (s, cls = 'k') => (s || '').split(',').filter(Boolean).map(k => `<span class="chip ${cls}">${esc(k)}</span>`).join('');
+const aiTag = l => l === 'urgent' ? '<span class="st hot">AI ด่วน</span>' : l === 'watch' ? '<span class="st wait">AI เฝ้าระวัง</span>' : '';
+function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('on'), 2600); }
+const ICON = {
+  home:'<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/>',
+  alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+  ai:'<rect x="5" y="7" width="14" height="12" rx="3"/><path d="M12 3v4M9 12v1M15 12v1M9 16h6"/>',
+  brand:'<path d="M4 4h8l8 8-8 8-8-8z"/><circle cx="8.5" cy="8.5" r="1.5"/>',
+  log:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',
+  chan:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+  block:'<circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/>',
+  db:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
-let curTab="watch";
-function showTab(t){
-  curTab=t;
-  $("#tabWatch").style.display=t==="watch"?"block":"none";
-  $("#tabBrand").style.display=t==="brand"?"block":"none";
-  $("#tabPosts").style.display=t==="posts"?"block":"none";
-  $("#tabAi").style.display=t==="ai"?"block":"none";
-  $("#tabAiBtn").className=t==="ai"?"":"ghost";
-  $("#tabWatchBtn").className=t==="watch"?"":"ghost";
-  $("#tabBrandBtn").className=t==="brand"?"":"ghost";
-  $("#tabPostsBtn").className=t==="posts"?"":"ghost";
-  if(t==="posts")loadPosts();
-  if(t==="ai")loadAi();
-}
-let aiLevels="urgent,watch";
-async function loadAi(){
-  const d=await (await fetch("/api/ai/reviews?days=14&levels="+aiLevels)).json();
-  const st=d.status;
-  $("#aiInfo").textContent=`agent: ${st.agent||'-'} · ล่าสุด ${st.agent_seen?fmtTH(st.agent_seen)+' น.':'ยังไม่เคยต่อ'} · รออ่าน ${st.pending} โพสต์ · 24 ชม.: ด่วน ${st.last24h.urgent||0} / เฝ้าระวัง ${st.last24h.watch||0} / ปกติ ${st.last24h.none||0}`;
-  const tb=$("#aiTbl tbody");tb.innerHTML="";
-  $("#aiEmpty").style.display=d.reviews.length?"none":"block";
-  for(const r of d.reviews){
-    tb.insertAdjacentHTML("beforeend",`<tr>
-      <td><span class="badge ${r.level==='urgent'?'s-new':'s-contacted'}">${r.level==='urgent'?'🔴 ด่วน':'🟠 เฝ้าระวัง'}</span>${r.alerted?'<div class="muted">ส่ง LINE แล้ว</div>':''}</td>
-      <td>${esc(r.kol)}<div class="muted">${esc(r.platform)} · ${fmtTH(r.posted_at)}</div></td>
-      <td>${esc((r.competitors||[]).join(", ")||(r.foreign_trading?"หุ้นต่างประเทศ":"-"))}</td>
-      <td>${r.why?`<b>เจอเพราะ: ${esc(r.why)}</b><br>`:''}<span class="muted">${esc(r.reason)}</span>${r.evidence?`<div class="muted">“${esc(r.evidence)}”</div>`:''}</td>
-      <td><a href="${esc(r.post_url)}" target="_blank">เปิด</a></td></tr>`);
-  }
-}
-document.querySelectorAll(".aiF").forEach(b=>b.onclick=()=>{aiLevels=b.dataset.l;loadAi();});
-$("#tabWatchBtn").onclick=()=>showTab("watch");
-$("#tabBrandBtn").onclick=()=>showTab("brand");
-$("#tabPostsBtn").onclick=()=>showTab("posts");
-$("#tabAiBtn").onclick=()=>showTab("ai");
+const NAV = [
+  {g:'ภาพรวม', items:[
+    {id:'home', th:'หน้าแรก', en:'Overview', ic:'home'},
+    {id:'hits', th:'เจอคำคู่แข่ง', en:'Competitor Hits', ic:'alert', badge:'open_hits'},
+    {id:'ai', th:'AI ตรวจโพสต์', en:'AI Review', ic:'ai'},
+    {id:'brand', th:'โพสต์ที่พูดถึง Webull', en:'Client Mentions', ic:'brand'},
+  ]},
+  {g:'การตรวจ', items:[
+    {id:'log', th:'ประวัติการตรวจ', en:'Scan Log', ic:'log'},
+    {id:'keywords', th:'คำที่เฝ้าระวัง', en:'Watch Words', ic:'key'},
+    {id:'channels', th:'ช่องที่ตรวจ', en:'Channels', ic:'chan'},
+    {id:'blocked', th:'เช็กไม่ได้', en:"Can't Check", ic:'block', badge:'blocked'},
+  ]},
+  {g:'ข้อมูล', items:[
+    {id:'db', th:'ฐานข้อมูลโพสต์', en:'Post Database', ic:'db'},
+    {id:'settings', th:'ตั้งค่า', en:'Settings', ic:'gear'},
+  ]},
+];
+let VIEW = 'home', BADGE = {}, PROG = null;
 
-async function loadPosts(){
-  const d=await (await fetch("/api/posts")).json();
-  const tb=$("#posts tbody");tb.innerHTML="";
-  $("#postsEmpty").style.display=d.posts.length?"none":"block";
-  $("#postsInfo").textContent=`ทั้งหมด ${d.posts.length} โพสต์`;
-  for(const p of d.posts){
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td class="muted" style="white-space:nowrap">${fmtTH(p.posted_at)}</td>
-     <td>${esc(p.kol_name)}</td><td>${esc(p.platform)}</td>
-     <td>${esc((p.caption||"").slice(0,160))}${p.matched?' <span class="badge s-new">เจอคำ</span>':''}</td>
-     <td><a href="${esc(p.post_url)}" target="_blank">เปิด</a></td>
-     <td class="muted">${esc(p.hashtags||"")}</td>`;
-    tb.appendChild(tr);
-  }
+function renderNav(){
+  $('#navroot').innerHTML = NAV.map(g => `<div class="navgroup">${g.g}</div>` + g.items.map(it => `
+    <a class="nav ${it.id === VIEW ? 'active' : ''}" href="#${it.id}" ${it.id === VIEW ? 'aria-current="page"' : ''} title="${it.th} · ${it.en}">
+      <svg viewBox="0 0 24 24">${ICON[it.ic]}</svg>
+      <span class="tx"><span class="th">${it.th}</span><span class="en">${it.en}</span></span>
+      ${it.badge && BADGE[it.badge] ? `<span class="badge">${num(BADGE[it.badge])}</span>` : ''}
+    </a>`).join('')).join('');
 }
-refresh();setInterval(()=>{if(curTab==="watch")refresh();},5000);
+const head = (title, sub) => `<h2 class="page">${title}</h2><p class="page-sub">${sub}</p>`;
+const V = () => $('#view');
+
+/* ═══════════════════════════ drawer ═══════════════════════════ */
+function openDrawer(title, sub, html){
+  $('#dTitle').innerHTML = title; $('#dSub').innerHTML = sub || ''; $('#dBody').innerHTML = html;
+  $('#dBody').scrollTop = 0; document.body.dataset.drawer = 'open'; $('#drawer').setAttribute('aria-hidden', 'false');
+}
+function closeDrawer(){ document.body.dataset.drawer = ''; $('#drawer').setAttribute('aria-hidden', 'true'); }
+$('#dClose').onclick = closeDrawer;
+$('#scrim').onclick = () => { closeDrawer(); setMenu(false); };
+addEventListener('keydown', e => { if(e.key === 'Escape'){ closeDrawer(); setMenu(false); } });
+
+async function showPost(id){
+  openDrawer('กำลังโหลด…', '', '');
+  const d = await J('/api/post?id=' + id);
+  if(d.error){ openDrawer('ไม่พบโพสต์', '', ''); return; }
+  const p = d.post, a = d.ai;
+  const comp = d.hits.filter(h => h.kind === 'competitor'), br = d.hits.filter(h => h.kind === 'brand');
+  openDrawer(`${esc(p.kol)} ${xb(p.excl)}`, `${pf(p.platform)} · โพสต์ ${fmtTH(p.posted_at)}`, `
+    <div class="bar"><a class="btn sm" href="${esc(p.post_url)}" target="_blank" rel="noopener">เปิดโพสต์จริง ↗</a>
+      <a class="btn ghost sm" href="${esc(p.profile_url)}" target="_blank" rel="noopener">เปิดหน้าช่อง ↗</a></div>
+    ${comp.length ? `<div class="note bad"><b>เจอคำคู่แข่ง:</b>&nbsp;${comp.map(h => `<span class="chip k">${esc(h.matched_keyword)}</span>`).join('')}</div>` : ''}
+    ${a && a.level !== 'none' && a.level !== 'skip' ? `<div class="note ${a.level === 'urgent' ? 'bad' : 'info'}"><div><b>AI: ${a.level === 'urgent' ? 'ด่วน' : 'เฝ้าระวัง'}</b>
+      ${(a.competitors || []).map(c => `<span class="chip k">${esc(c)}</span>`).join('')}<br>${esc(a.why || '')} ${esc(a.reason || '')}
+      ${a.evidence ? `<div style="margin-top:6px">“${esc(a.evidence)}”</div>` : ''}</div></div>` : ''}
+    <dl class="kv">
+      <dt>วันที่โพสต์</dt><dd>${fmtTH(p.posted_at)}</dd>
+      <dt>ระบบเก็บเมื่อ</dt><dd>${fmtTH(p.scanned_at)} (${ago(p.scanned_at)})</dd>
+      <dt>AI อ่านแล้ว</dt><dd>${a ? `${{none:'ปกติ', skip:'ข้าม', urgent:'ด่วน', watch:'เฝ้าระวัง'}[a.level] || a.level} · ${fmtTH(a.reviewed_at)}` : (p.excl ? 'ยังไม่อ่าน' : 'ไม่อ่าน (Non-Exclusive)')}</dd>
+      <dt>พูดถึง Webull</dt><dd>${br.length ? br.map(h => `<span class="chip b">${esc(h.matched_keyword)}</span>`).join('') : '—'}</dd>
+      <dt>แฮชแท็ก</dt><dd>${esc(p.hashtags || '—')}</dd>
+      <dt>ลิงก์</dt><dd><a class="link" href="${esc(p.post_url)}" target="_blank" rel="noopener">${esc(p.post_url)}</a></dd>
+    </dl>
+    <h3 style="font-size:14px;margin-bottom:8px">ข้อความในโพสต์</h3>
+    <div class="fulltext">${esc(p.caption || '(ไม่มีข้อความ)')}</div>`);
+}
+
+/* ═══════════════════════════ charts ═══════════════════════════ */
+function barChart(series, opt = {}){
+  const W = opt.w || 1000, H = opt.h || 200, pl = 30, pb = 22, pt = 10, n = series.length;
+  const max = Math.max(1, ...series.map(s => s.v));
+  const bw = (W - pl) / n, nice = Math.ceil(max / 4 / (max > 50 ? 10 : 1)) * (max > 50 ? 10 : 1) * 4 || 4;
+  const y = v => pt + (H - pt - pb) * (1 - v / nice);
+  let g = '';
+  for(let i = 0; i <= 4; i++){ const v = nice * i / 4; g += `<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="#eef2f7"/><text x="${pl-6}" y="${y(v)+3}" text-anchor="end">${num(v)}</text>`; }
+  series.forEach((s, i) => {
+    const x = pl + i * bw + bw * .18, w = bw * .64, h = Math.max(0, H - pb - y(s.v));
+    g += `<rect class="bar" x="${x}" y="${H - pb - h}" width="${w}" height="${h}" rx="3"><title>${esc(s.label)}: ${num(s.v)} ${opt.unit || ''}${s.v2 != null ? ` · ${opt.unit2}: ${s.v2}` : ''}</title></rect>`;
+    if(s.v2) g += `<circle class="hit" cx="${x + w/2}" cy="${H - pb - h - 7}" r="${Math.min(7, 3 + s.v2/3)}"><title>${esc(s.label)}: ${opt.unit2} ${s.v2}</title></circle>`;
+    if(n <= 16 || i % Math.ceil(n/12) === 0) g += `<text x="${x + w/2}" y="${H - 6}" text-anchor="middle">${esc(s.short || '')}</text>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opt.title || '')}">${g}</svg>`;
+}
+const hbars = (obj, total) => {
+  const ent = Object.entries(obj).sort((a, b) => b[1] - a[1]); const m = Math.max(1, ...ent.map(e => e[1]));
+  return ent.map(([k, v]) => `<div class="hbar"><span>${pf(k)}</span><span class="tr"><i style="width:${v/m*100}%;background:${(PF[k]||[,'#1e5eff'])[1]}"></i></span><span class="v">${num(v)}</span></div>`).join('');
+};
+
+/* ═══════════════════════════ HOME ═══════════════════════════ */
+async function vHome(){
+  const d = await J('/api/overview');
+  BADGE.open_hits = d.open_hits; BADGE.blocked = d.blocked; renderNav();
+  const pr = d.progress, last = d.recent_runs[0];
+  const agentBad = d.ai && (d.ai.agent_quiet_min == null || d.ai.agent_quiet_min > 20);
+  const hourly = d.next.hourly_until;
+  const todo = [];
+  if(d.open_hits) todo.push(['#hits', d.open_hits, 'โพสต์เจอคำคู่แข่งที่ยังไม่ได้กดสถานะ', 'เปิดดูแล้วกดว่าติดต่อ KOL แล้ว / ลบแล้ว / ไม่ใช่']);
+  if(d.ai7.urgent) todo.push(['#ai', d.ai7.urgent, 'โพสต์ที่ AI ว่าด่วนใน 7 วัน', 'AI อ่านแล้วเห็นว่าโปรโมตคู่แข่งหรือสอนเทรดหุ้นนอกผ่านเจ้าอื่น']);
+  if(d.blocked) todo.push(['#blocked', d.blocked, 'ช่องที่ระบบเช็กไม่ได้', 'ดูสาเหตุ + วิธีแก้ของแต่ละช่อง']);
+  if(agentBad) todo.push(['#ai', '!', 'AI agent บน sanmini ไม่ตอบ', d.ai.agent_quiet_min == null ? 'ยังไม่เคยต่อ' : `เงียบมา ${d.ai.agent_quiet_min} นาที — โพสต์ใหม่จะยังไม่ถูก AI อ่าน`]);
+  if(d.line_error) todo.push(['#settings', '!', 'ส่ง LINE ไม่สำเร็จล่าสุด', d.line_error]);
+  const series = d.series.map(s => ({label: s.day, short: s.day.slice(8), v: s.posts, v2: s.hits}));
+  V().innerHTML = head('ภาพรวมวันนี้',
+    `ระบบเฝ้าโพสต์ของ KOL ${num(d.kols)} คน (Exclusive ${d.kols_excl} · Non-Exclusive ${d.kols_non}) รวม ${num(d.channels)} ช่อง ตรวจคำคู่แข่ง ${d.keywords} แบรนด์ อ่านด้วย AI เฉพาะ Exclusive`) + `
+  ${d.line_error ? `<div class="note bad">⚠️ LINE ส่งไม่สำเร็จล่าสุด: ${esc(d.line_error)}</div>` : ''}
+  <div class="banner">
+    <div class="big"><div class="ring ${pr.running ? 'run' : agentBad ? 'bad' : ''}"><span class="dot ${pr.running ? 'run' : agentBad ? 'bad' : ''}" style="margin:0;width:12px;height:12px"></span></div>
+      <div><h4>${pr.running ? `กำลังตรวจ ${pr.done}/${pr.total} ช่อง` : 'ระบบทำงานปกติ'}</h4>
+      <div class="muted small">${pr.running ? esc(pr.current) : `ตรวจล่าสุด ${(() => { const t = (last && (last.finished_at || last.started_at)) || pr.last_run || d.last_check; return t ? fmtTH(t) + ' · ' + ago(t) : '—'; })()}`}</div></div></div>
+    <div class="facts">
+      <div><small>รอบถัดไป</small><b>${d.next.at ? fmtTH(d.next.at) : '—'}</b><div class="faint small">${esc(d.next.kind || d.next.label || '')}</div></div>
+      <div><small>ความถี่</small><b>${!d.next.times ? esc(d.next.label || '—') : d.next.times.length >= 12 ? 'ทุก 2 ชม.' : d.next.times.join(', ')}</b><div class="faint small">${hourly ? 'Exclusive ทุกชั่วโมงถึง ' + fmtTH(hourly, false) : (d.next.times ? 'ทุกช่อง' : '')}</div></div>
+      <div><small>AI agent</small><b>${d.ai ? (agentBad ? '<span style="color:#d92d20">ไม่ตอบ</span>' : '<span style="color:#067647">ออนไลน์</span>') : '—'}</b><div class="faint small">${d.ai ? 'รออ่าน ' + num(d.ai.pending) + ' โพสต์' : ''}</div></div>
+    </div>
+  </div>
+  <div class="tiles">
+    <a class="tile ${d.open_hits ? 'alert' : 'ok'}" href="#hits"><div class="lab">ต้องจัดการ</div><div class="num">${num(d.open_hits)}</div><div class="sub">โพสต์เจอคำคู่แข่ง ยังไม่กดสถานะ</div><div class="go">ไปจัดการ →</div></a>
+    <a class="tile ${d.ai7.urgent ? 'alert' : 'ok'}" href="#ai"><div class="lab">AI ว่าด่วน (7 วัน)</div><div class="num">${num(d.ai7.urgent || 0)}</div><div class="sub">เฝ้าระวัง ${num(d.ai7.watch || 0)} · อ่านแล้ว ${num((d.ai7.none || 0) + (d.ai7.urgent || 0) + (d.ai7.watch || 0))}</div><div class="go">ดูที่ AI ตรวจ →</div></a>
+    <a class="tile" href="#db"><div class="lab">โพสต์ใหม่ 24 ชม.</div><div class="num">${num(d.new24)}</div><div class="sub">ของ Exclusive ${num(d.excl24)} โพสต์</div><div class="go">ดูฐานข้อมูล →</div></a>
+    <a class="tile ${d.blocked ? 'warn' : 'ok'}" href="#blocked"><div class="lab">เช็กไม่ได้</div><div class="num">${num(d.blocked)}</div><div class="sub">จาก ${num(d.channels)} ช่อง</div><div class="go">ดูสาเหตุ →</div></a>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="hd"><div><h3>ต้องดูตอนนี้</h3><small>โพสต์ล่าสุดที่เจอคำคู่แข่ง (ยังไม่จัดการ) และที่ AI ว่าด่วน — กดเพื่อดูข้อความเต็ม</small></div></div>
+      <div class="feed">${d.attention.length ? d.attention.map(a => `<div class="it" data-u="${esc(a.post_url)}" data-src="${a.src}" data-id="${a.id}">
+        <div class="ico ${a.src}">${a.src === 'ai' ? 'AI' : '!'}</div>
+        <div class="bd"><b>${esc(a.kol)}</b> <span class="muted small">· ${pf(a.platform)} · ${ago(a.at)}</span> <span class="chip k">${esc(a.what)}</span>
+        <p>${esc(a.text || '')}</p></div></div>`).join('') : '<div class="empty">ไม่มีเรื่องค้าง 🎉</div>'}</div></div>
+    <div>
+      <div class="card"><div class="hd"><div><h3>สิ่งที่ควรทำต่อ</h3></div></div>
+        <div class="todo">${todo.length ? todo.map(t => `<a href="${t[0]}"><span class="n" style="color:${t[1] === '!' ? '#d92d20' : 'var(--ink)'}">${t[1] === '!' ? '!' : num(t[1])}</span><span class="t"><b>${esc(t[2])}</b><small>${esc(t[3])}</small></span><span class="arr">→</span></a>`).join('') : '<div class="empty">ไม่มีงานค้าง ระบบปกติดี</div>'}</div></div>
+      <div class="card"><div class="hd"><div><h3>โพสต์ใหม่ 14 วัน แยกแพลตฟอร์ม</h3></div></div>${hbars(d.platform14)}</div>
+    </div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>โพสต์ใหม่ที่ระบบเก็บได้ต่อวัน (14 วัน)</h3><small>แท่ง = โพสต์ใหม่ · จุดส้ม = เจอคำคู่แข่ง</small></div></div>
+    ${barChart(series, {unit:'โพสต์', unit2:'เจอคู่แข่ง', title:'โพสต์ใหม่ต่อวัน'})}
+    <div class="legend"><span><i style="background:var(--accent)"></i>โพสต์ใหม่</span><span><i style="background:var(--warm);border-radius:50%"></i>เจอคำคู่แข่ง</span></div></div>
+  <div class="card"><div class="hd"><div><h3>รอบตรวจล่าสุด</h3><small>ดูทุกรอบได้ที่ประวัติการตรวจ</small></div><a class="btn ghost sm" href="#log">ดูทั้งหมด →</a></div>
+    ${runTable(d.recent_runs.slice(0, 6))}</div>`;
+  V().querySelectorAll('.feed .it').forEach(el => el.onclick = () => window.open(el.dataset.u, '_blank', 'noopener'));
+  bindRuns();
+}
+
+/* ═══════════════════════════ SCAN LOG ═══════════════════════════ */
+const SCOPE = {all:['ทุกช่อง','info'], exclusive:['Exclusive','wait'], resume:['ต่อรอบค้าง','off'], history:['ย้อนหลัง','off']};
+const RST = {done:['เสร็จ','ok'], running:['กำลังตรวจ','info'], stopped:['หยุดกลางทาง','wait'], error:['ผิดพลาด','hot'], history:['ประมาณ','off']};
+function runTable(rows){
+  if(!rows.length) return '<div class="empty">ยังไม่มีรอบที่บันทึก — รอบถัดไปจะเริ่มบันทึกอัตโนมัติ</div>';
+  return `<div class="tblwrap"><table><thead><tr><th>เริ่มตรวจ</th><th>ประเภท</th><th class="num">ช่องที่ตรวจ</th><th>ใช้เวลา</th>
+    <th class="num">โพสต์ใหม่</th><th class="num">เจอคู่แข่ง</th><th class="num">เช็กไม่ได้</th><th>สถานะ</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr class="click" data-run="${esc(r.id)}">
+      <td class="nw"><b>${fmtTH(r.started_at)}</b><div class="faint small">${ago(r.started_at)}</div></td>
+      <td><span class="st ${(SCOPE[r.scope]||['',''])[1]}">${(SCOPE[r.scope]||[r.scope])[0]}</span></td>
+      <td class="num">${r.total == null ? '—' : `${num(r.done)}/${num(r.total)}`}</td>
+      <td class="nw">${dur(r.started_at, r.finished_at)}</td>
+      <td class="num"><b>${num(r.new_posts)}</b></td>
+      <td class="num">${r.hit_posts != null ? (r.hit_posts ? `<span class="st hot">${r.hit_posts} โพสต์</span>` : '0') : (r.hits ? `<span class="st hot">${r.hits}</span>` : '0')}</td>
+      <td class="num">${r.blocked == null ? '—' : (r.blocked ? `<span class="st wait">${r.blocked}</span>` : '0')}</td>
+      <td><span class="st ${(RST[r.status]||['','off'])[1]}">${(RST[r.status]||[r.status])[0]}</span></td>
+      <td class="link nw">ดูรายละเอียด →</td></tr>`).join('')}</tbody></table></div>`;
+}
+function bindRuns(){ V().querySelectorAll('tr[data-run]').forEach(tr => tr.onclick = () => showRun(tr.dataset.run)); }
+let LOG = {rows: [], scope: 'all', hitsOnly: false, page: 1, day: ''};
+async function vLog(){
+  V().innerHTML = head('ประวัติการตรวจ', 'ทุกรอบที่ระบบตรวจ: เริ่มเมื่อไร ตรวจกี่ช่อง เจอโพสต์ใหม่เท่าไร เจอคำคู่แข่งกี่โพสต์ — กดแถวเพื่อดูว่าเจออะไรบ้าง') + '<div class="empty">กำลังโหลด…</div>';
+  const d = await J('/api/runs');
+  LOG.rows = d.runs; LOG.meta = d; LOG.page = 1;
+  drawLog();
+}
+function drawLog(){
+  const d = LOG.meta, today = new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Bangkok'}).format(new Date());
+  const thDay = iso => new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Bangkok'}).format(new Date(iso));
+  const todayRows = LOG.rows.filter(r => thDay(r.started_at) === today);
+  const days = [...new Set(LOG.rows.map(r => thDay(r.started_at)))];
+  let rows = LOG.rows.filter(r => LOG.scope === 'all' || (LOG.scope === 'history' ? r.status === 'history' : r.status !== 'history'));
+  if(LOG.hitsOnly) rows = rows.filter(r => (r.hit_posts ?? r.hits) > 0);
+  if(LOG.day) rows = rows.filter(r => thDay(r.started_at) === LOG.day);
+  const per = 40, pages = Math.max(1, Math.ceil(rows.length / per)); LOG.page = Math.min(LOG.page, pages);
+  const recent = LOG.rows.slice(0, 48).reverse().map(r => ({label: fmtTH(r.started_at), short: fmtTH(r.started_at).split(' ').pop(), v: r.new_posts || 0, v2: r.hit_posts ?? r.hits}));
+  V().innerHTML = head('ประวัติการตรวจ', 'ทุกรอบที่ระบบตรวจ: เริ่มเมื่อไร ตรวจกี่ช่อง เจอโพสต์ใหม่เท่าไร เจอคำคู่แข่งกี่โพสต์ — กดแถวเพื่อดูว่าเจออะไรบ้าง') + `
+  ${d.progress.running ? `<div class="note info">กำลังตรวจรอบนี้อยู่ ${d.progress.done}/${d.progress.total} ช่อง — ${esc(d.progress.current)}</div>` : ''}
+  <div class="tiles">
+    <div class="tile"><div class="lab">รอบตรวจวันนี้</div><div class="num">${num(todayRows.length)}</div><div class="sub">รอบถัดไป ${d.next.at ? fmtTH(d.next.at) : '—'}</div></div>
+    <div class="tile"><div class="lab">โพสต์ใหม่วันนี้</div><div class="num">${num(todayRows.reduce((a, r) => a + (r.new_posts || 0), 0))}</div><div class="sub">รวมทุกรอบ</div></div>
+    <div class="tile ${todayRows.some(r => (r.hit_posts ?? r.hits) > 0) ? 'alert' : ''}"><div class="lab">เจอคู่แข่งวันนี้</div><div class="num">${num(todayRows.reduce((a, r) => a + ((r.hit_posts ?? r.hits) || 0), 0))}</div><div class="sub">โพสต์</div></div>
+    <div class="tile"><div class="lab">รอบทั้งหมดในบันทึก</div><div class="num">${num(LOG.rows.length)}</div><div class="sub">บันทึกจริง ${num(d.real)} · ย้อนหลัง ${num(d.history)}</div></div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>โพสต์ใหม่ต่อรอบ (48 รอบล่าสุด)</h3><small>แท่ง = โพสต์ใหม่ที่เจอในรอบนั้น · จุดส้ม = เจอคำคู่แข่ง</small></div></div>${barChart(recent, {unit:'โพสต์', unit2:'เจอคู่แข่ง', h:180})}</div>
+  <div class="card">
+    <div class="bar">
+      <div class="seg" id="logScope">${[['all','ทั้งหมด'],['real','บันทึกจริง'],['history','ย้อนหลัง']].map(([k, l]) => `<button data-k="${k}" class="${LOG.scope === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <select class="inp" id="logDay"><option value="">ทุกวัน</option>${days.map(x => `<option ${LOG.day === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="logHits" ${LOG.hitsOnly ? 'checked' : ''}> เฉพาะรอบที่เจอคู่แข่ง</label>
+      <span class="muted small" style="margin-left:auto">${num(rows.length)} รอบ</span>
+    </div>
+    ${runTable(rows.slice((LOG.page - 1) * per, LOG.page * per))}
+    <div class="pager"><button class="btn ghost sm" id="lp" ${LOG.page <= 1 ? 'disabled' : ''}>← ก่อนหน้า</button>หน้า ${LOG.page}/${pages}<button class="btn ghost sm" id="ln" ${LOG.page >= pages ? 'disabled' : ''}>ถัดไป →</button></div>
+    <p class="faint small" style="margin-top:10px">“ย้อนหลัง” = รอบก่อนเริ่มมีบันทึก ประมาณจากเวลาที่ระบบบันทึกโพสต์ (โชว์เฉพาะรอบที่เจอโพสต์ใหม่ ไม่รู้จำนวนช่องที่ตรวจ)</p>
+  </div>`;
+  V().querySelectorAll('#logScope button').forEach(b => b.onclick = () => { LOG.scope = b.dataset.k; LOG.page = 1; drawLog(); });
+  $('#logDay').onchange = e => { LOG.day = e.target.value; LOG.page = 1; drawLog(); };
+  $('#logHits').onchange = e => { LOG.hitsOnly = e.target.checked; LOG.page = 1; drawLog(); };
+  $('#lp').onclick = () => { LOG.page--; drawLog(); }; $('#ln').onclick = () => { LOG.page++; drawLog(); };
+  bindRuns();
+}
+async function showRun(id){
+  openDrawer('กำลังโหลด…', '', '');
+  const d = await J('/api/run_detail?id=' + encodeURIComponent(id));
+  if(d.error){ openDrawer('ไม่พบรอบนี้', '', ''); return; }
+  const r = d.run, comp = d.hits.filter(h => h.kind === 'competitor'), brand = d.hits.filter(h => h.kind === 'brand');
+  let tab = comp.length ? 'hits' : 'posts';
+  const draw = () => {
+    const body = {
+      posts: d.posts.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>แพลตฟอร์ม</th><th>ข้อความ</th><th>โพสต์เมื่อ</th></tr></thead><tbody>
+        ${d.posts.map(p => `<tr class="click" data-post="${p.id}"><td class="nw"><b>${esc(p.kol)}</b>${xb(p.excl)}</td><td>${pf(p.platform)}</td>
+          <td><div class="cap">${esc(p.caption || '(ไม่มีข้อความ)')}</div>${chips(p.keywords)}${chips(p.brands, 'b')}${aiTag(p.ai_level)}</td><td class="nw small">${fmtTH(p.posted_at)}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty">รอบนี้ไม่มีโพสต์ใหม่</div>',
+      hits: comp.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำที่เจอ</th><th>ข้อความรอบคำ</th><th></th></tr></thead><tbody>
+        ${comp.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)}</div></td><td><span class="chip k">${esc(h.matched_keyword)}</span></td>
+          <td><div class="cap">${esc(h.snippet)}</div></td><td><a class="link" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty">รอบนี้ไม่เจอคำคู่แข่ง</div>',
+      brand: brand.length ? `<div class="tblwrap"><table><tbody>${brand.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)}</div></td><td><span class="chip b">${esc(h.matched_keyword)}</span></td><td><div class="cap">${esc(h.snippet)}</div></td><td><a class="link" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ไม่มี</div>',
+      blocked: r.blocked_list && r.blocked_list.length ? `<div class="tblwrap"><table><tbody>${r.blocked_list.map(b => `<tr><td class="nw"><b>${esc(b.kol)}</b><div>${pf(b.platform)}</div></td><td class="small muted">${esc(b.error)}</td><td><a class="link" href="${esc(b.url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">${r.status === 'history' ? 'รอบย้อนหลังไม่มีข้อมูลช่องที่เช็กไม่ได้' : 'ทุกช่องเช็กได้ปกติ'}</div>`,
+    }[tab];
+    $('#dBody').innerHTML = `
+      <div class="mini">
+        <div><small>ช่องที่ตรวจ</small><b>${r.total == null ? '—' : num(r.done) + '/' + num(r.total)}</b></div>
+        <div><small>ใช้เวลา</small><b>${dur(r.started_at, r.finished_at)}</b></div>
+        <div><small>โพสต์ที่ดึงมา</small><b>${r.fetched == null ? '—' : num(r.fetched)}</b></div>
+        <div><small>โพสต์ใหม่</small><b>${num(d.posts.length)}</b></div>
+        <div><small>เจอคู่แข่ง</small><b style="color:${comp.length ? '#d92d20' : 'inherit'}">${num(comp.length)}</b></div>
+        <div><small>เช็กไม่ได้</small><b>${r.blocked == null ? '—' : num(r.blocked)}</b></div>
+      </div>
+      ${Object.keys(d.by_platform).length ? `<div class="card" style="padding:12px 14px"><div class="small muted" style="font-weight:700;margin-bottom:4px">โพสต์ใหม่แยกแพลตฟอร์ม</div>${hbars(d.by_platform)}</div>` : ''}
+      <div class="bar"><div class="seg" id="rtab">${[['hits', `เจอคู่แข่ง`, comp.length], ['posts', 'โพสต์ใหม่', d.posts.length], ['brand', 'พูดถึง Webull', brand.length], ['blocked', 'เช็กไม่ได้', (r.blocked_list || []).length]].map(([k, l, c]) => `<button data-k="${k}" class="${tab === k ? 'on' : ''}">${l}<span class="c">${c}</span></button>`).join('')}</div></div>
+      ${body}`;
+    $('#dBody').querySelectorAll('#rtab button').forEach(b => b.onclick = () => { tab = b.dataset.k; draw(); });
+    $('#dBody').querySelectorAll('tr[data-post]').forEach(tr => tr.onclick = () => showPost(tr.dataset.post));
+  };
+  openDrawer(`รอบตรวจ ${fmtTH(r.started_at)}`, `${(SCOPE[r.scope] || SCOPE.history)[0]} · ${esc(r.trigger || '')} · <span class="st ${(RST[r.status]||['','off'])[1]}">${(RST[r.status]||[r.status])[0]}</span>`, '');
+  draw();
+}
+
+/* ═══════════════════════════ KEYWORDS ═══════════════════════════ */
+async function vKeywords(){
+  const d = await J('/api/keywords'); const t = d.totals;
+  const kwRow = r => `<tr><td class="nw"><b>${esc(r.name)}</b></td><td>${r.variants.map(v => `<span class="chip">${esc(v)}</span>`).join('') || '<span class="faint">—</span>'}</td>
+    <td class="num">${r.n}</td><td class="num">${r.hits ? `<b>${num(r.hits)}</b>` : '<span class="faint">0</span>'}</td><td class="num">${r.kols || 0}</td><td class="nw small">${r.last ? fmtTH(r.last) : '—'}</td></tr>`;
+  const kwTable = rows => `<div class="tblwrap"><table><thead><tr><th>แบรนด์ / คำหลัก</th><th>คำที่จับได้ (ตัวสะกดอื่น)</th><th class="num">จำนวนคำ</th><th class="num">เจอแล้ว</th><th class="num">KOL</th><th>เจอล่าสุด</th></tr></thead><tbody>${rows.map(kwRow).join('')}</tbody></table></div>`;
+  V().innerHTML = head('คำที่เฝ้าระวัง', 'ระบบอ่านทุกโพสต์ใหม่ของ KOL Exclusive แล้วหาคำเหล่านี้ (ไม่สนตัวพิมพ์เล็ก/ใหญ่ เว้นวรรค หรือ 0/o 1/l) — ถ้าเจอจะเด้ง LINE ทันที') + `
+  <div class="tiles">
+    <div class="tile"><div class="lab">แบรนด์คู่แข่งที่เฝ้า</div><div class="num">${t.brands}</div><div class="sub">แบรนด์</div></div>
+    <div class="tile"><div class="lab">คำ + ตัวสะกดทั้งหมด</div><div class="num">${t.words}</div><div class="sub">คำที่ใช้จับคู่แข่ง</div></div>
+    <div class="tile"><div class="lab">คำกว้าง (มีเงื่อนไข)</div><div class="num">${t.unbranded_words}</div><div class="sub">นับเฉพาะโพสต์ที่ไม่พูดถึง Webull</div></div>
+    <div class="tile"><div class="lab">คำของแบรนด์ลูกค้า</div><div class="num">${t.client_words}</div><div class="sub">ใช้ทำรายงานโพสต์ Webull</div></div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>1. คำคู่แข่ง (${t.brands} แบรนด์ · ${t.words} คำ)</h3><small>เจอคำไหนก็ตามในแถว = นับเป็นแบรนด์นั้น · “เจอแล้ว” = จำนวนครั้งที่เคยเจอทั้งหมด</small></div>
+    <input class="inp" id="kwq" placeholder="กรองแบรนด์/คำ…" style="width:220px"></div><div id="kwt">${kwTable(d.competitors)}</div></div>
+  <div class="grid2e">
+    <div class="card"><div class="hd"><div><h3>2. คำกว้าง</h3><small>นับเป็นคู่แข่งก็ต่อเมื่อโพสต์ <b>ไม่</b>พูดถึง Webull และมีคำชวนสมัคร/ลิงก์โปรโมตด้วย</small></div></div>
+      ${d.unbranded.length ? kwTable(d.unbranded) : '<div class="empty">ปิดอยู่</div>'}</div>
+    <div class="card"><div class="hd"><div><h3>3. แบรนด์ลูกค้า (Webull)</h3><small>ใช้ทำรายงาน “โพสต์ที่พูดถึง Webull” ไม่ใช่การเตือน</small></div></div>${kwTable(d.client_brands)}</div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>4. คำชวนสมัคร / สัญญาณโปรโมต (${d.promo_signals.length} คำ)</h3><small>ใช้คู่กับคำกว้างในข้อ 2 · ลิงก์ย่อ/ลิงก์แอปสโตร์/โค้ดแนะนำ ก็นับด้วย</small></div></div>
+    ${d.promo_signals.map(w => `<span class="chip">${esc(w)}</span>`).join('')}</div>
+  <div class="grid2e">
+    <div class="card"><div class="hd"><div><h3>5. คำที่ตัดทิ้งก่อนค้น</h3><small>คำปกติที่บังเอิญมีคำคู่แข่งซ้อนอยู่ เช่น “พาราไดม์” มี “ไดม์”</small></div></div>
+      ${d.exclude.map(w => `<span class="chip">${esc(w)}</span>`).join('')}</div>
+    <div class="card"><div class="hd"><div><h3>6. แบรนด์ที่ AI เจอนอกลิสต์</h3><small>AI อ่านความหมาย จึงจับแบรนด์ที่ไม่มีในลิสต์คำได้</small></div></div>
+      ${d.ai_hits.length ? d.ai_hits.map(a => `<span class="chip k">${esc(a.name.replace(/^AI:\s*/, ''))} · ${a.hits}</span>`).join('') : '<div class="empty">ยังไม่มี</div>'}</div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>7. กติกาที่ให้ AI ใช้อ่านโพสต์</h3><small>แก้เป็นภาษาคนได้ที่หน้าตั้งค่า</small></div><a class="btn ghost sm" href="#settings">แก้คำ/กติกา →</a></div>
+    <div class="fulltext">${esc(d.ai_policy || d.ai_default_policy || '(ใช้กติกามาตรฐานของ AI agent: นับเป็นด่วนเมื่อโปรโมต/ให้ลิงก์/ชวนเปิดบัญชีคู่แข่ง หรือสอนเทรดหุ้นนอกผ่านเจ้าอื่น · เฝ้าระวัง = เอ่ยถึงแต่ไม่โปรโมต)')}</div></div>`;
+  $('#kwq').oninput = e => { const q = e.target.value.toLowerCase(); $('#kwt').innerHTML = kwTable(d.competitors.filter(r => (r.name + ' ' + r.variants.join(' ')).toLowerCase().includes(q))); };
+}
+
+/* ═══════════════════════════ CHANNELS ═══════════════════════════ */
+let CH = {data: null, seg: 'excl', q: ''};
+async function vChannels(){
+  V().innerHTML = head('ช่องที่ตรวจ', 'ทุกลิงก์ที่ระบบตรวจ แยกตาม KOL และแพลตฟอร์ม — กดที่ช่องเพื่อดูรายละเอียดและโพสต์ที่เก็บได้') + '<div class="empty">กำลังโหลด…</div>';
+  CH.data = await J('/api/channels'); drawChannels();
+}
+function drawChannels(){
+  const d = CH.data, all = d.kols;
+  const ex = all.filter(k => k.excl), non = all.filter(k => !k.excl);
+  let list = CH.seg === 'excl' ? ex : CH.seg === 'non' ? non : all;
+  if(CH.q) list = list.filter(k => k.name.toLowerCase().includes(CH.q.toLowerCase()));
+  const nCh = ks => ks.reduce((a, k) => a + k.channels.length, 0);
+  const byPlat = {}; list.forEach(k => k.channels.forEach(c => byPlat[c.platform] = (byPlat[c.platform] || 0) + 1));
+  const plats = d.platforms;
+  const cell = (k, p) => {
+    const cs = k.channels.filter(c => c.platform === p);
+    if(!cs.length) return k.skip.includes(p) ? '<span class="faint small">ข้าม</span>' : '<span class="none">—</span>';
+    return `<div class="cell">${cs.map(c => `<span class="c ${c.status === 'blocked' ? 'blocked' : ''} ${c.source === 'นอกชีต' ? 'ext' : ''} ${c.scanned ? '' : 'unscanned'}" data-ch="${c.id}" title="${esc(c.url)}"><i></i>${num(c.posts_year)}</span>`).join('')}</div>`;
+  };
+  V().innerHTML = head('ช่องที่ตรวจ', 'ทุกลิงก์ที่ระบบตรวจ แยกตาม KOL และแพลตฟอร์ม — กดที่ช่องเพื่อดูรายละเอียดและโพสต์ที่เก็บได้') + `
+  <div class="tiles">
+    <div class="tile"><div class="lab">KOL Exclusive</div><div class="num">${ex.length}</div><div class="sub">${num(nCh(ex))} ช่อง</div></div>
+    <div class="tile"><div class="lab">KOL Non-Exclusive</div><div class="num">${non.length}</div><div class="sub">${num(nCh(non))} ช่อง</div></div>
+    <div class="tile"><div class="lab">ช่องที่ตรวจทั้งหมด</div><div class="num">${num(nCh(all))}</div><div class="sub">ปิดไปแล้ว ${num(d.inactive)} ลิงก์ (ไม่อยู่ในชีต)</div></div>
+    <div class="tile"><div class="lab">แพลตฟอร์มที่ตรวจ</div><div class="num">${d.enabled.length}</div><div class="sub">${d.enabled.map(p => (PF[p]||[p])[0]).join(' · ')}</div></div>
+  </div>
+  <div class="card">
+    <div class="bar">
+      <div class="seg" id="chSeg">${[['excl', 'Exclusive', ex.length], ['non', 'Non-Exclusive', non.length], ['all', 'ทั้งหมด', all.length]].map(([k, l, c]) => `<button data-k="${k}" class="${CH.seg === k ? 'on' : ''}">${l}<span class="c">${c}</span></button>`).join('')}</div>
+      <input class="inp" id="chq" placeholder="ค้นชื่อ KOL…" value="${esc(CH.q)}" style="width:200px">
+      <button class="btn ghost sm" id="chCsv" style="margin-left:auto">ดาวน์โหลด CSV</button>
+    </div>
+    <div class="legend" style="margin:0 0 10px"><span><i style="background:var(--good);border-radius:50%"></i>ตรวจได้ (ตัวเลข = โพสต์ปี 2026 ในระบบ)</span><span><i style="background:var(--hot);border-radius:50%"></i>เช็กไม่ได้</span><span><i style="border:1px dashed #9aa8bd;background:#fff"></i>ลิงก์ที่เพิ่มนอกชีต</span><span>“ข้าม” = ตั้งค่าไม่ตรวจ</span></div>
+    <div class="tblwrap"><table class="mx"><thead><tr><th>KOL</th><th>Tier</th>${plats.map(p => `<th>${pf(p)}<div class="faint" style="font-weight:600;margin-top:2px">${byPlat[p] || 0} ช่อง</div></th>`).join('')}<th class="num">โพสต์ปีนี้</th></tr></thead>
+    <tbody>${list.map(k => `<tr><td class="nw"><b>${esc(k.name)}</b>${xb(k.excl)}</td><td class="small muted nw">${esc(k.tier)}</td>${plats.map(p => `<td>${cell(k, p)}</td>`).join('')}
+      <td class="num"><b>${num(k.channels.reduce((a, c) => a + c.posts_year, 0))}</b></td></tr>`).join('')}</tbody></table></div>
+    ${list.length ? '' : '<div class="empty">ไม่พบ KOL</div>'}
+  </div>`;
+  V().querySelectorAll('#chSeg button').forEach(b => b.onclick = () => { CH.seg = b.dataset.k; drawChannels(); });
+  $('#chq').oninput = e => { CH.q = e.target.value; const pos = e.target.selectionStart; drawChannels(); const i = $('#chq'); i.focus(); i.setSelectionRange(pos, pos); };
+  V().querySelectorAll('.c[data-ch]').forEach(el => el.onclick = () => showChannel(+el.dataset.ch));
+  $('#chCsv').onclick = () => {
+    const rows = [['KOL', 'Exclusive', 'Tier', 'Platform', 'URL', 'Status', 'Source', 'Posts 2026', 'Posts total', 'Last post', 'Last checked']];
+    list.forEach(k => k.channels.forEach(c => rows.push([k.name, k.excl ? 'Exclusive' : 'Non-Exclusive', k.tier, c.platform, c.url, c.status, c.source, c.posts_year, c.posts, c.last_post || '', c.last_checked || ''])));
+    const csv = '﻿' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'kol_channels.csv'; a.click();
+  };
+}
+function showChannel(id){
+  let k, c; for(const kk of CH.data.kols){ const f = kk.channels.find(x => x.id === id); if(f){ k = kk; c = f; break; } }
+  if(!c) return;
+  const [cat, label, fix] = c.status === 'blocked' ? classify(c.error) : [];
+  openDrawer(`${esc(k.name)} ${xb(k.excl)}`, `${pf(c.platform)} · ${c.status === 'blocked' ? '<span class="st hot">เช็กไม่ได้</span>' : '<span class="st ok">ตรวจได้</span>'}`, `
+    <div class="bar"><a class="btn sm" href="${esc(c.url)}" target="_blank" rel="noopener">เปิดหน้าช่อง ↗</a>
+      <a class="btn ghost sm" href="#db" id="chPosts">ดูโพสต์ของ KOL นี้ในฐานข้อมูล</a></div>
+    ${c.status === 'blocked' ? `<div class="note bad"><div><b>${esc(label)}</b><br>${esc(fix)}<div class="small" style="margin-top:6px;opacity:.8">${esc(c.error)}</div></div></div>` : ''}
+    <div class="mini"><div><small>โพสต์ปี 2026</small><b>${num(c.posts_year)}</b></div><div><small>โพสต์ทั้งหมดในระบบ</small><b>${num(c.posts)}</b></div>
+      <div><small>เจอคำคู่แข่ง</small><b>${num(c.hits)}</b></div></div>
+    <dl class="kv"><dt>ลิงก์</dt><dd><a class="link" href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.url)}</a></dd>
+      <dt>ที่มาของลิงก์</dt><dd>${c.source === 'นอกชีต' ? 'เพิ่มเองนอกชีตทีม (extra_channels)' : 'Google Sheet ของทีม'}</dd>
+      <dt>โพสต์ล่าสุดที่เก็บ</dt><dd>${fmtTH(c.last_post)}</dd>
+      <dt>ตรวจล่าสุด</dt><dd>${fmtTH(c.last_checked)} (${ago(c.last_checked)})</dd>
+      <dt>ตรวจได้ล่าสุด</dt><dd>${fmtTH(c.last_ok)}</dd>
+      <dt>แพลตฟอร์มนี้</dt><dd>${c.scanned ? 'เปิดตรวจอยู่' : 'ปิดตรวจในตั้งค่า (scan_platforms)'}</dd>
+      <dt>Tier</dt><dd>${esc(k.tier || '—')}</dd></dl>`);
+  $('#chPosts').onclick = () => { DBQ = {...DBQ0, kol: k.name, platform: c.platform}; closeDrawer(); };
+}
+function classify(e){
+  e = (e || '').toLowerCase();
+  if(/not_available|only shared it with|login/.test(e)) return ['private', 'ต้องล็อกอินถึงจะเห็น', 'เป็นโปรไฟล์ส่วนตัวหรือจำกัดผู้ชม ระบบดึงแบบไม่ล็อกอินเลยไม่เห็นโพสต์'];
+  if(/not_found|ไม่พบบัญชี/.test(e)) return ['notfound', 'ไม่พบบัญชี', 'ลิงก์ในชีตอาจผิด บัญชีถูกปิด หรือเปลี่ยนชื่อ'];
+  if(/0 โพสต์|no_items|noresults/.test(e)) return ['empty', 'ดึงได้ 0 โพสต์', 'บัญชีอาจเปลี่ยนชื่อ เป็นส่วนตัว หรือยังไม่เคยโพสต์'];
+  return ['other', 'ข้อผิดพลาดอื่น', ''];
+}
+
+/* ═══════════════════════════ BLOCKED ═══════════════════════════ */
+async function vBlocked(){
+  const d = await J('/api/blocked'); BADGE.blocked = d.blocked.length; renderNav();
+  const rr = d.recent_runs.slice().reverse().map(r => ({label: fmtTH(r.started_at), short: fmtTH(r.started_at).split(' ').pop(), v: r.blocked || 0}));
+  V().innerHTML = head('เช็กไม่ได้', 'ช่องที่รอบล่าสุดดึงโพสต์ไม่ได้ — กดแถวเพื่อดูสาเหตุและวิธีแก้') + `
+  <div class="tiles">
+    <div class="tile ${d.blocked.length ? 'warn' : 'ok'}"><div class="lab">เช็กไม่ได้ตอนนี้</div><div class="num">${d.blocked.length}</div><div class="sub">Exclusive ${d.blocked.filter(b => b.excl).length} · Non ${d.blocked.filter(b => !b.excl).length}</div></div>
+    ${Object.entries(d.by_reason).map(([k, v]) => `<div class="tile"><div class="lab">${esc(k)}</div><div class="num">${v}</div><div class="sub">ช่อง</div></div>`).join('')}
+    <div class="tile"><div class="lab">ลิงก์ในชีตที่อ่านไม่ออก</div><div class="num">${d.unresolved.length}</div><div class="sub">ต้องแก้ในชีต</div></div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>ช่องที่เช็กไม่ได้</h3><small>เรียง Exclusive ก่อน · “ตรวจได้ล่าสุด” = ครั้งสุดท้ายที่ดึงโพสต์ได้</small></div></div>
+    ${d.blocked.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>แพลตฟอร์ม</th><th>สาเหตุ</th><th>ตรวจได้ล่าสุด</th><th>ตรวจล่าสุด</th><th class="num">โพสต์ในระบบ</th><th></th></tr></thead><tbody>
+    ${d.blocked.map((b, i) => `<tr class="click" data-b="${i}"><td class="nw"><b>${esc(b.kol)}</b>${xb(b.excl)}</td><td>${pf(b.platform)}</td>
+      <td><span class="st ${b.cat === 'private' ? 'wait' : 'hot'}">${esc(b.reason)}</span></td><td class="nw small">${b.last_ok ? fmtTH(b.last_ok) : 'ไม่เคย'}</td>
+      <td class="nw small">${ago(b.last_checked)}</td><td class="num">${num(b.posts)}</td><td class="link nw">วิธีแก้ →</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ทุกช่องเช็กได้ปกติ 🎉</div>'}</div>
+  <div class="grid2e">
+    <div class="card"><div class="hd"><div><h3>ช่องที่ตั้งให้ข้าม</h3><small>ไม่ตรวจโดยตั้งใจ (setting skip_channels)</small></div></div>
+      ${d.skip.length ? `<table><tbody>${d.skip.map(s => `<tr><td><b>${esc(s.kol)}</b></td><td>${s.platforms.map(pf).join(' ')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">ไม่มี</div>'}</div>
+    <div class="card"><div class="hd"><div><h3>เช็กไม่ได้ต่อรอบ (30 รอบล่าสุด)</h3></div></div>${rr.length ? barChart(rr, {unit:'ช่อง', h:260, w:640}) : '<div class="empty">ยังไม่มีบันทึก — จะเริ่มเก็บตั้งแต่รอบถัดไป</div>'}</div>
+  </div>
+  ${d.unresolved.length ? `<div class="card"><div class="hd"><div><h3>ลิงก์ในชีตที่อ่านไม่ออก</h3><small>ให้ทีมไปแก้ในชีต แล้วกด “ซิงก์ชีต”</small></div></div><div class="tblwrap"><table><tbody>
+    ${d.unresolved.map(u => `<tr><td><b>${esc(u.kol_name)}</b></td><td>${pf(u.platform)}</td><td class="small muted">${esc(u.raw_value)}</td><td class="small">${esc(u.reason)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+  V().querySelectorAll('tr[data-b]').forEach(tr => tr.onclick = () => {
+    const b = d.blocked[+tr.dataset.b];
+    openDrawer(`${esc(b.kol)} ${xb(b.excl)}`, `${pf(b.platform)} · <span class="st hot">${esc(b.reason)}</span>`, `
+      <div class="note info"><div><b>วิธีแก้</b><br>${esc(b.fix)}</div></div>
+      <div class="bar"><a class="btn sm" href="${esc(b.url)}" target="_blank" rel="noopener">เปิดลิงก์ช่อง ↗</a></div>
+      <dl class="kv"><dt>ลิงก์</dt><dd><a class="link" href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.url)}</a></dd>
+        <dt>ตรวจได้ล่าสุด</dt><dd>${b.last_ok ? fmtTH(b.last_ok) : 'ไม่เคยดึงได้'}</dd><dt>ตรวจล่าสุด</dt><dd>${fmtTH(b.last_checked)}</dd>
+        <dt>โพสต์ในระบบ</dt><dd>${num(b.posts)} (ล่าสุด ${fmtTH(b.last_post)})</dd></dl>
+      <h3 style="font-size:14px;margin-bottom:8px">ข้อความ error เต็ม</h3><div class="fulltext">${esc(b.error)}</div>`);
+  });
+}
+
+/* ═══════════════════════════ DATABASE ═══════════════════════════ */
+const DBQ0 = {q:'', kol:'', platform:'', excl:'', flag:'', from:'', to:'', sort:'posted', page:1, size:50};
+let DBQ = {...DBQ0}, DBMETA = null;
+async function vDb(){
+  if(!DBMETA) DBMETA = await J('/api/tables');
+  const m = DBMETA, T = Object.fromEntries(m.tables.map(t => [t.name, t.rows]));
+  V().innerHTML = head('ฐานข้อมูลโพสต์', `ทุกโพสต์ที่ระบบเก็บได้ ตั้งแต่ ${fmtTH(m.first_scan, false)} — ค้น กรอง เรียง แล้วกดแถวเพื่ออ่านข้อความเต็ม`) + `
+  <div class="tiles">
+    <div class="tile"><div class="lab">โพสต์ทั้งหมด</div><div class="num">${num(T.seen_post)}</div><div class="sub">โพสต์ ${fmtTH(m.first_post, false)} – ${fmtTH(m.last_post, false)}</div></div>
+    <div class="tile"><div class="lab">KOL / ช่อง</div><div class="num">${num(m.kols.length)} / ${num(T.channel)}</div><div class="sub">ช่องรวมที่ปิดไปแล้ว</div></div>
+    <div class="tile"><div class="lab">เจอคำ (คู่แข่ง + Webull)</div><div class="num">${num(T.hit)}</div><div class="sub">รายการ</div></div>
+    <div class="tile"><div class="lab">AI อ่านแล้ว</div><div class="num">${num(T.ai_review)}</div><div class="sub">โพสต์ Exclusive</div></div>
+  </div>
+  <div class="card">
+    <form class="bar" id="dbf">
+      <input class="inp" name="q" placeholder="ค้นข้อความ / ชื่อ / ลิงก์" value="${esc(DBQ.q)}" style="flex:1 1 220px">
+      <select class="inp" name="kol"><option value="">KOL ทั้งหมด</option>${m.kols.map(k => `<option value="${esc(k.name)}" ${DBQ.kol === k.name ? 'selected' : ''}>${esc(k.name)}${k.excl ? ' ★' : ''}</option>`).join('')}</select>
+      <select class="inp" name="platform"><option value="">ทุกแพลตฟอร์ม</option>${Object.keys(PF).map(p => `<option value="${p}" ${DBQ.platform === p ? 'selected' : ''}>${PF[p][0]}</option>`).join('')}</select>
+      <select class="inp" name="excl"><option value="">Exclusive + Non</option><option value="excl" ${DBQ.excl === 'excl' ? 'selected' : ''}>เฉพาะ Exclusive</option><option value="non" ${DBQ.excl === 'non' ? 'selected' : ''}>เฉพาะ Non-Exclusive</option></select>
+      <select class="inp" name="flag"><option value="">ทุกโพสต์</option>${[['hit', 'เจอคำคู่แข่ง'], ['urgent', 'AI ด่วน'], ['watch', 'AI เฝ้าระวัง'], ['brand', 'พูดถึง Webull']].map(([k, l]) => `<option value="${k}" ${DBQ.flag === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <input class="inp" type="date" name="from" value="${esc(DBQ.from)}" title="โพสต์ตั้งแต่"><input class="inp" type="date" name="to" value="${esc(DBQ.to)}" title="ถึง">
+      <select class="inp" name="sort">${[['posted', 'โพสต์ใหม่สุดก่อน'], ['posted_asc', 'โพสต์เก่าสุดก่อน'], ['scanned', 'เก็บล่าสุดก่อน'], ['kol', 'ชื่อ KOL']].map(([k, l]) => `<option value="${k}" ${DBQ.sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <button class="btn sm">ค้นหา</button><button class="btn ghost sm" type="button" id="dbReset">ล้าง</button>
+    </form>
+    <div id="dbres"><div class="empty">กำลังโหลด…</div></div>
+  </div>
+  <div class="grid2e">
+    <div class="card"><div class="hd"><div><h3>ดาวน์โหลดข้อมูล</h3><small>สำหรับเอาไปทำต่อใน Excel / Sheets หรือให้ AI วิเคราะห์</small></div></div>
+      <div class="bar"><a class="btn ghost sm" href="/api/posts.csv">โพสต์ทั้งหมด (CSV)</a><a class="btn ghost sm" href="/api/export" target="_blank">ทุกตาราง (JSON)</a><a class="btn ghost sm" href="/api/export.db">ไฟล์ฐานข้อมูล (SQLite)</a><a class="btn ghost sm" href="/api/docs" target="_blank">คู่มือ API</a></div></div>
+    <div class="card"><div class="hd"><div><h3>ข้อมูลในระบบมีอะไรบ้าง</h3></div></div>
+      <table><tbody>${[['kol', 'KOL', 'รายชื่อจากชีต + Exclusive/Non + Tier'], ['channel', 'ช่อง', 'ลิงก์แต่ละแพลตฟอร์มของ KOL + สถานะตรวจ'], ['seen_post', 'โพสต์', 'ทุกโพสต์ที่เก็บได้ (ข้อความ แฮชแท็ก วันที่)'],
+        ['hit', 'เจอคำ', 'โพสต์ที่เจอคำคู่แข่ง / คำ Webull'], ['ai_review', 'AI อ่าน', 'ผลที่ AI อ่านโพสต์ Exclusive'], ['scan_run', 'รอบตรวจ', 'ประวัติแต่ละรอบ'], ['settings', 'ตั้งค่า', 'คำ เวลา LINE ฯลฯ']]
+        .map(([t, l, x]) => `<tr><td class="nw"><b>${l}</b></td><td class="small muted">${x}</td><td class="num">${num(T[t] || 0)}</td></tr>`).join('')}</tbody></table></div>
+  </div>`;
+  $('#dbf').onsubmit = e => { e.preventDefault(); const f = new FormData(e.target); for(const [k, v] of f) DBQ[k] = v; DBQ.page = 1; loadDb(); };
+  $('#dbf').querySelectorAll('select').forEach(s => s.onchange = () => $('#dbf').requestSubmit());
+  $('#dbReset').onclick = () => { DBQ = {...DBQ0}; vDb(); };
+  loadDb();
+}
+async function loadDb(){
+  const qs = new URLSearchParams(Object.entries(DBQ).filter(([k, v]) => v !== '' && v != null)).toString();
+  const d = await J('/api/posts_q?' + qs);
+  const pages = Math.max(1, Math.ceil(d.total / d.size));
+  $('#dbres').innerHTML = `<div class="muted small" style="margin-bottom:6px">พบ <b>${num(d.total)}</b> โพสต์</div>
+    ${d.rows.length ? `<div class="tblwrap"><table><thead><tr><th>วันที่โพสต์</th><th>KOL</th><th>แพลตฟอร์ม</th><th>ข้อความ</th><th>ธง</th><th></th></tr></thead><tbody>
+    ${d.rows.map(r => `<tr class="click" data-post="${r.id}"><td class="nw small">${fmtTH(r.posted_at)}</td><td class="nw"><b>${esc(r.kol)}</b>${xb(r.excl)}</td><td>${pf(r.platform)}</td>
+      <td><div class="cap">${esc(r.caption || '(ไม่มีข้อความ)')}</div></td><td>${chips(r.keywords)}${chips(r.brands, 'b')}${aiTag(r.ai_level)}</td>
+      <td><a class="link nw" href="${esc(r.post_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ไม่พบโพสต์ตามเงื่อนไข</div>'}
+    <div class="pager"><button class="btn ghost sm" id="dp" ${d.page <= 1 ? 'disabled' : ''}>← ก่อนหน้า</button>หน้า ${num(d.page)}/${num(pages)}<button class="btn ghost sm" id="dn" ${d.page >= pages ? 'disabled' : ''}>ถัดไป →</button></div>`;
+  $('#dbres').querySelectorAll('tr[data-post]').forEach(tr => tr.onclick = () => showPost(tr.dataset.post));
+  $('#dp').onclick = () => { DBQ.page--; loadDb(); }; $('#dn').onclick = () => { DBQ.page++; loadDb(); };
+}
+
+/* ═══════════════════════════ HITS / AI / BRAND (existing data) ═══════════════════════════ */
+let STATE = null, HITF = 'new';
+const HS = {new:['ยังไม่จัดการ', 'hot'], contacted:['ติดต่อ KOL แล้ว', 'wait'], removed:['KOL ลบแล้ว', 'ok'], ignored:['ไม่ใช่ / ข้าม', 'off']};
+async function vHits(){
+  STATE = await J('/api/state');
+  const hits = STATE.hits, cnt = s => hits.filter(h => h.handle_status === s).length;
+  BADGE.open_hits = cnt('new'); renderNav();
+  const list = HITF === 'all' ? hits : hits.filter(h => h.handle_status === HITF);
+  V().innerHTML = head('เจอคำคู่แข่ง', 'โพสต์ของ KOL Exclusive ที่มีคำคู่แข่ง — เปิดดู แล้วเลือกสถานะว่าจัดการแล้วหรือยัง (ทีมกดตัดสินจาก LINE ได้ด้วย)') + `
+  <div class="tiles">${Object.entries(HS).map(([k, [l]]) => `<button class="tile ${k === 'new' && cnt(k) ? 'alert' : ''}" data-f="${k}"><div class="lab">${l}</div><div class="num">${num(cnt(k))}</div></button>`).join('')}</div>
+  <div class="card"><div class="bar"><div class="seg" id="hf">${[['new', 'ยังไม่จัดการ'], ['contacted', 'ติดต่อแล้ว'], ['removed', 'ลบแล้ว'], ['ignored', 'ข้าม'], ['all', 'ทั้งหมด']].map(([k, l]) => `<button data-f="${k}" class="${HITF === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <span class="muted small" style="margin-left:auto">${num(list.length)} รายการ</span></div>
+    ${list.length ? `<div class="tblwrap"><table><thead><tr><th>เจอเมื่อ</th><th>KOL</th><th>คำ</th><th>ข้อความรอบคำ</th><th>ทีมตัดสิน</th><th>สถานะ</th><th></th></tr></thead><tbody>
+    ${list.map(h => `<tr><td class="nw small">${fmtTH(h.detected_at)}<div class="faint">โพสต์ ${fmtTH(h.posted_at, false)}</div></td><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)}</div></td>
+      <td><span class="chip k">${esc(h.matched_keyword)}</span></td><td><div class="cap">${esc(h.snippet)}</div></td>
+      <td class="nw">${h.verdict ? `<span class="st ${h.verdict === 'competitor' ? 'hot' : 'ok'}">${h.verdict === 'competitor' ? 'คู่แข่งจริง' : 'ผ่าน'}</span><div class="faint small">${esc(h.verdict_by || '')}</div>` : '<span class="faint small">ยังไม่กด</span>'}</td>
+      <td><select class="inp" data-id="${h.id}" style="padding:5px 8px">${Object.entries(HS).map(([k, [l]]) => `<option value="${k}" ${h.handle_status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><a class="link nw" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ไม่มีรายการ 🎉</div>'}</div>`;
+  V().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { HITF = b.dataset.f; vHits(); });
+  V().querySelectorAll('select[data-id]').forEach(s => s.onchange = async () => { await P('/api/hit_status', {id: s.dataset.id, status: s.value}); toast('บันทึกสถานะแล้ว'); const h = STATE.hits.find(x => x.id == s.dataset.id); if(h) h.handle_status = s.value; BADGE.open_hits = STATE.hits.filter(x => x.handle_status === 'new').length; renderNav(); });
+}
+let AIL = 'urgent,watch';
+async function vAi(){
+  const d = await J('/api/ai/reviews?days=14&levels=' + AIL), st = d.status;
+  const quiet = st.agent_quiet_min == null || st.agent_quiet_min > 20;
+  V().innerHTML = head('AI ตรวจโพสต์', 'AI อ่านทุกโพสต์ใหม่ของ KOL Exclusive (ข้อความ + เสียงในคลิป TikTok/YouTube) แล้วบอกว่าพูดถึงคู่แข่งหรือสอนเทรดหุ้นนอกผ่านเจ้าอื่นไหม — จับได้แม้ไม่มีคำในลิสต์') + `
+  ${quiet ? `<div class="note bad">AI agent บน sanmini ${st.agent_quiet_min == null ? 'ยังไม่เคยต่อ' : `เงียบมา ${st.agent_quiet_min} นาที`} — โพสต์ใหม่จะค้างรออ่าน</div>` : ''}
+  <div class="tiles">
+    <div class="tile ${quiet ? 'alert' : 'ok'}"><div class="lab">สถานะ agent</div><div class="num" style="font-size:20px">${quiet ? 'ไม่ตอบ' : 'ออนไลน์'}</div><div class="sub">${esc(st.agent || '-')} · ${st.agent_seen ? ago(st.agent_seen) : '—'}</div></div>
+    <div class="tile"><div class="lab">รออ่าน</div><div class="num">${num(st.pending)}</div><div class="sub">โพสต์</div></div>
+    <div class="tile ${(st.last24h.urgent || 0) ? 'alert' : ''}"><div class="lab">ด่วน 24 ชม.</div><div class="num">${num(st.last24h.urgent || 0)}</div><div class="sub">เด้ง LINE ป้ายแดง</div></div>
+    <div class="tile"><div class="lab">เฝ้าระวัง / ปกติ 24 ชม.</div><div class="num">${num(st.last24h.watch || 0)} / ${num(st.last24h.none || 0)}</div><div class="sub">ไม่เด้ง LINE</div></div>
+  </div>
+  <div class="card"><div class="bar"><div class="seg" id="aif">${[['urgent,watch', 'ทั้งหมด'], ['urgent', 'ด่วน'], ['watch', 'เฝ้าระวัง']].map(([k, l]) => `<button data-l="${k}" class="${AIL === k ? 'on' : ''}">${l}</button>`).join('')}</div><span class="muted small" style="margin-left:auto">14 วันล่าสุด · ${d.reviews.length} โพสต์</span></div>
+    ${d.reviews.length ? `<div class="tblwrap"><table><thead><tr><th>ระดับ</th><th>KOL</th><th>คู่แข่ง</th><th>AI ว่าอย่างไร</th><th></th></tr></thead><tbody>
+    ${d.reviews.map(r => `<tr class="click" data-post="${r.seen_post_id}"><td class="nw">${r.level === 'urgent' ? '<span class="st hot">ด่วน</span>' : '<span class="st wait">เฝ้าระวัง</span>'}${r.alerted ? '<div class="faint small">ส่ง LINE แล้ว</div>' : ''}</td>
+      <td class="nw"><b>${esc(r.kol)}</b><div>${pf(r.platform)} <span class="faint small">${fmtTH(r.posted_at)}</span></div></td>
+      <td>${(r.competitors || []).map(c => `<span class="chip k">${esc(c)}</span>`).join('') || (r.foreign_trading ? '<span class="chip k">หุ้นต่างประเทศ</span>' : '—')}</td>
+      <td><div class="cap">${r.why ? `<b>${esc(r.why)}</b> · ` : ''}${esc(r.reason)}</div>${r.evidence ? `<div class="faint small cap">“${esc(r.evidence)}”</div>` : ''}</td>
+      <td><a class="link nw" href="${esc(r.post_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ไม่มีโพสต์ที่ AI ติดธงในช่วงนี้</div>'}
+    <p class="faint small" style="margin-top:10px">ด่วน = โปรโมต/ให้ลิงก์/ชวนเปิดบัญชีคู่แข่ง หรือสอนเทรดหุ้นนอกผ่านเจ้าอื่น · เฝ้าระวัง = เอ่ยถึงแต่ไม่ได้โปรโมต · AI ไม่เห็นรูปภาพ</p></div>`;
+  V().querySelectorAll('#aif button').forEach(b => b.onclick = () => { AIL = b.dataset.l; vAi(); });
+  V().querySelectorAll('tr[data-post]').forEach(tr => tr.onclick = () => showPost(tr.dataset.post));
+}
+async function vBrand(){
+  STATE = STATE || await J('/api/state');
+  const bh = STATE.brand_hits || [], groups = {};
+  bh.forEach(h => (groups[h.kol_name] = groups[h.kol_name] || []).push(h));
+  const ent = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  V().innerHTML = head('โพสต์ที่พูดถึง Webull', 'รายงานให้ลูกค้า: โพสต์ของ KOL ทุกคนที่พูดถึงแบรนด์ลูกค้า จัดกลุ่มตาม KOL (ส่งสรุปเข้า LINE ท้ายทุกรอบ)') + `
+  <div class="tiles"><div class="tile"><div class="lab">โพสต์ที่พูดถึง</div><div class="num">${num(bh.length)}</div></div><div class="tile"><div class="lab">KOL</div><div class="num">${num(ent.length)}</div></div></div>
+  <div class="card"><div class="hd"><div><h3>แยกตาม KOL</h3></div><button class="btn ghost sm" id="bfBtn">ค้นย้อนหลังจากโพสต์ที่เก็บแล้ว</button></div>
+    ${ent.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th class="num">โพสต์</th><th>ล่าสุด</th></tr></thead><tbody>
+      ${ent.map(([k, arr], i) => `<tr class="click" data-g="${i}"><td><b>${esc(k)}</b></td><td class="num">${arr.length}</td><td class="small">${arr.slice(0, 3).map(h => `${pf(h.platform)} <span class="faint">${fmtTH(h.posted_at, false)}</span>`).join(' · ')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอ</div>'}</div>`;
+  V().querySelectorAll('tr[data-g]').forEach(tr => tr.onclick = () => {
+    const [k, arr] = ent[+tr.dataset.g];
+    openDrawer(esc(k), `${arr.length} โพสต์ที่พูดถึง Webull`, `<table><tbody>${arr.map(h => `<tr><td class="nw">${pf(h.platform)}<div class="faint small">${fmtTH(h.posted_at)}</div></td><td><span class="chip b">${esc(h.matched_keyword)}</span><div class="cap small">${esc(h.snippet)}</div></td><td><a class="link" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table>`);
+  });
+  $('#bfBtn').onclick = async () => { $('#bfBtn').disabled = true; $('#bfBtn').textContent = 'กำลังค้น…'; const r = await P('/api/brand_backfill'); toast(r.error || `สแกน ${num(r.scanned)} โพสต์ เจอใหม่ ${r.added}`); STATE = null; vBrand(); };
+}
+
+/* ═══════════════════════════ SETTINGS ═══════════════════════════ */
+async function vSettings(){
+  STATE = await J('/api/state'); const s = STATE.settings;
+  const pj = v => { try { return JSON.stringify(JSON.parse(v || '{}'), null, 2); } catch(e){ return v || ''; } };
+  const F = (id, label, hint = '', full = false, ta = 0) => `<div class="${full ? 'full' : ''}"><label for="${id}">${label}</label>${ta ? `<textarea id="${id}" rows="${ta}"></textarea>` : `<input id="${id}">`}${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+  V().innerHTML = head('ตั้งค่า', 'เปลี่ยนเวลาตรวจ คำที่เฝ้า การส่ง LINE และกติกา AI — กดบันทึกด้านล่างทีเดียว') + `
+  <div class="card"><div class="hd"><div><h3>การตรวจ</h3></div></div><div class="form">
+    ${F('run_times', 'เวลาตรวจทุกช่อง (เวลาไทย คั่นด้วย ,)', 'เช่น 08:00,16:00')}
+    ${F('auto_enabled', 'ตรวจอัตโนมัติ (1 = เปิด, 0 = ปิด)')}
+    ${F('posts_per_check', 'จำนวนโพสต์ล่าสุดที่ดึงต่อช่องต่อรอบ', 'ยิ่งน้อยยิ่งประหยัด แนะนำ 3')}
+    ${F('scan_platforms', 'แพลตฟอร์มที่ตรวจ (คั่นด้วย ,)', 'ตัด facebook ออกลดค่าใช้จ่ายได้มากที่สุด')}
+    ${F('sheet_id', 'Google Sheet ID / URL ของรายชื่อ KOL')}
+    ${F('enable_bd_fallback', 'ใช้ Brightdata สำรองเมื่อ Apify หมด (1/0)', 'แนะนำ 0 กันค่าใช้จ่ายบานปลาย')}
+  </div></div>
+  <div class="card"><div class="hd"><div><h3>คำที่เฝ้าระวัง</h3><small>รูปแบบ JSON: {"ชื่อแบรนด์": ["ตัวสะกด1", "ตัวสะกด2"]}</small></div></div><div class="form">
+    ${F('watchlist', 'คำคู่แข่ง', '', true, 8)}
+    ${F('watchlist_unbranded', 'คำกว้าง (นับเฉพาะโพสต์ที่ไม่พูดถึง Webull)', 'เว้น {} = ปิด', false, 3)}
+    ${F('client_brands', 'แบรนด์ลูกค้าที่จะทำรายงาน', '', false, 3)}
+  </div></div>
+  <div class="card"><div class="hd"><div><h3>LINE</h3></div></div><div class="form">
+    <div><label for="line_mode">โหมดส่ง</label><select id="line_mode"><option value="broadcast">Broadcast — ทุกคนที่ add bot</option><option value="push">Push — เฉพาะปลายทางด้านล่าง</option></select></div>
+    ${F('line_to', 'ปลายทาง (เฉพาะโหมด Push: userId/groupId)')}
+    ${F('line_token', 'Channel access token (เว้นว่าง = ไม่เปลี่ยน)')}
+    ${F('brand_kols_per_bubble', 'จำนวน KOL ต่อบับเบิล (รายงาน Webull)')}
+    <div class="full small muted" id="lineSources"></div>
+  </div></div>
+  <div class="card"><div class="hd"><div><h3>AI อ่านโพสต์</h3></div></div><div class="form">
+    ${F('ai_review_enabled', 'เปิด AI อ่านโพสต์ (1/0)')}
+    ${F('ai_alerts_enabled', 'เด้ง LINE ป้ายแดงเมื่อ AI ว่าด่วน (1/0)')}
+    ${F('ai_alert_max_age_days', 'เด้งเฉพาะโพสต์ที่ลงภายใน (วัน)')}
+    ${F('ai_review_policy', 'กติกาให้ AI (เขียนภาษาคนได้ · เว้นว่าง = กติกามาตรฐาน)', '', true, 5)}
+  </div></div>
+  <div class="bar"><button class="btn" id="saveBtn">บันทึกการตั้งค่า</button></div>`;
+  ['run_times', 'auto_enabled', 'posts_per_check', 'scan_platforms', 'sheet_id', 'enable_bd_fallback', 'line_to', 'brand_kols_per_bubble', 'ai_review_enabled', 'ai_alerts_enabled', 'ai_alert_max_age_days', 'ai_review_policy']
+    .forEach(k => $('#' + k).value = s[k] ?? '');
+  $('#line_mode').value = s.line_mode || 'broadcast';
+  $('#watchlist').value = pj(s.watchlist); $('#watchlist_unbranded').value = pj(s.watchlist_unbranded); $('#client_brands').value = pj(s.client_brands);
+  $('#line_token').placeholder = s.line_token_set ? '•••• (ตั้งไว้แล้ว)' : 'ยังไม่ตั้ง';
+  const ls = STATE.line_sources || [];
+  $('#lineSources').innerHTML = ls.length ? 'id ที่จับได้จาก webhook (กดเพื่อใส่ในช่องปลายทาง): ' + ls.map(x => `<a href="#" class="link lsrc" data-id="${esc(x.source_id)}">[${esc(x.source_type)}] ${esc(x.source_id).slice(0, 14)}…</a>`).join(' · ') : '';
+  V().querySelectorAll('.lsrc').forEach(a => a.onclick = e => { e.preventDefault(); $('#line_to').value = a.dataset.id; });
+  $('#saveBtn').onclick = async () => {
+    for(const k of ['watchlist', 'watchlist_unbranded', 'client_brands']){ try { JSON.parse($('#' + k).value || '{}'); } catch(e){ toast('JSON ผิดรูปแบบในช่อง ' + k); return; } }
+    const b = {}; ['run_times', 'auto_enabled', 'posts_per_check', 'scan_platforms', 'sheet_id', 'enable_bd_fallback', 'line_to', 'line_mode', 'brand_kols_per_bubble', 'ai_review_enabled', 'ai_alerts_enabled', 'ai_alert_max_age_days', 'ai_review_policy', 'watchlist', 'watchlist_unbranded', 'client_brands'].forEach(k => b[k] = $('#' + k).value);
+    if($('#line_token').value.trim()) b.line_token = $('#line_token').value.trim();
+    const r = await P('/api/settings', b); toast(r.error || 'บันทึกแล้ว'); $('#line_token').value = '';
+  };
+}
+
+/* ═══════════════════════════ router + status ═══════════════════════════ */
+const VIEWS = {home:vHome, hits:vHits, ai:vAi, brand:vBrand, log:vLog, keywords:vKeywords, channels:vChannels, blocked:vBlocked, db:vDb, settings:vSettings};
+async function route(){
+  const id = (location.hash.slice(1) || 'home').split('/')[0];
+  VIEW = VIEWS[id] ? id : 'home'; renderNav(); setMenu(false); closeDrawer();
+  window.scrollTo(0, 0);
+  try { await VIEWS[VIEW](); } catch(e){ console.error(e); V().innerHTML = head('โหลดไม่สำเร็จ', esc(e.message)); }
+}
+addEventListener('hashchange', route);
+async function pollStatus(){
+  try {
+    const d = await J('/api/progress'); const pr = d.progress, last = d.last;
+    const wasRunning = PROG && PROG.running; PROG = pr;
+    $('#planbox').innerHTML = pr.running
+      ? `<small>กำลังตรวจ</small><b><span class="dot run"></span>${pr.done}/${pr.total} ช่อง</b><div class="prog"><i style="width:${pr.total ? pr.done / pr.total * 100 : 0}%"></i></div><small style="margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pr.current)}</small>`
+      : `<small>ตรวจล่าสุด</small><b><span class="dot"></span>${ago((last && (last.finished_at || last.started_at)) || pr.last_run || d.last_check)}</b><small style="margin-top:3px">ถัดไป ${d.next.at ? fmtTH(d.next.at) : esc(d.next.label || '—')}</small>`;
+    $('#nextPill').innerHTML = pr.running ? `กำลังตรวจ <b>${pr.done}/${pr.total}</b>` : `รอบถัดไป <b>${d.next.at ? fmtTH(d.next.at) : '—'}</b>`;
+    $('#runBtn').style.display = pr.running ? 'none' : ''; $('#stopBtn').style.display = pr.running ? '' : 'none';
+    if(wasRunning && !pr.running && (VIEW === 'home' || VIEW === 'log')) route();
+  } catch(e){}
+}
+$('#runBtn').onclick = async () => {
+  if(!confirm('เริ่มตรวจทุกช่องตอนนี้เลยไหม? (ใช้เครดิต Apify เท่ากับ 1 รอบ)')) return;
+  const r = await P('/api/run'); toast(r.error ? 'มีรอบกำลังตรวจอยู่แล้ว' : 'เริ่มตรวจแล้ว'); pollStatus();
+};
+$('#stopBtn').onclick = async () => { await P('/api/stop'); toast('สั่งหยุดแล้ว — จะหยุดหลังช่องที่กำลังตรวจ'); pollStatus(); };
+$('#syncBtn').onclick = async () => {
+  $('#syncBtn').disabled = true; toast('กำลังซิงก์จากชีต…');
+  const r = await P('/api/sync', {}); $('#syncBtn').disabled = false;
+  toast(r.error ? 'ซิงก์ไม่สำเร็จ: ' + r.error : `ซิงก์แล้ว: ${r.kols} KOL · ${r.channels} ช่อง (ใหม่ ${r.new_channels})`);
+  CH.data = null; DBMETA = null; if(['channels', 'blocked', 'home'].includes(VIEW)) route();
+};
+$('#gsearch').onsubmit = e => { e.preventDefault(); DBQ = {...DBQ0, q: $('#gq').value.trim()}; if(VIEW === 'db') vDb(); else location.hash = 'db'; };
+const setMenu = open => { document.body.dataset.menu = open ? 'open' : 'closed'; $('#burger').setAttribute('aria-expanded', String(open)); };
+$('#burger').onclick = () => setMenu(document.body.dataset.menu !== 'open');
+
+route(); pollStatus(); setInterval(pollStatus, 5000);
+setInterval(() => { if(VIEW === 'home' && document.body.dataset.drawer !== 'open') vHome(); }, 60000);
 </script>
 </body>
 </html>

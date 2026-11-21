@@ -222,12 +222,22 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
     run_started = only_before or datetime.now(timezone.utc).isoformat()
     db.set_setting("scan_running_since", run_started)
     db.set_setting("scan_running_excl", "1" if exclusive_only else "")
+    run_id = None
+    try:
+        run_id = db.start_run(triggered_by,
+                              "resume" if only_before else
+                              ("exclusive" if exclusive_only else "all"),
+                              len(channels))
+    except Exception:
+        traceback.print_exc()
     try:
         limit = int(db.get_setting("posts_per_check", "3") or "3")
     except ValueError:
         limit = 3
 
-    new_posts = hits = blocked = 0
+    new_posts = hits = blocked = fetched = brand_new = 0
+    blocked_list = []  # for the scan log: which channels failed this round
+    run_status = "error"
     comp_posts = []   # one entry per post with a new competitor hit (digest list)
     brand_wl = matcher.get_client_brands()
     unbranded_wl = matcher.get_unbranded_watchlist()
@@ -241,12 +251,17 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                 posts = collectors.collect(ch, limit=limit)
             except Exception as e:
                 blocked += 1
+                blocked_list.append({"kol": ch["kol_name"],
+                                     "platform": ch["platform"],
+                                     "url": ch["profile_url"],
+                                     "error": str(e)[:300]})
                 db.update_channel(ch["id"], status="blocked",
                                   last_error=str(e)[:400],
                                   last_checked=datetime.now(timezone.utc).isoformat())
                 PROGRESS["done"] += 1
                 continue
 
+            fetched += len(posts or [])
             cid = ch.get("_resolved_channel_id")
             if cid and not ch.get("channel_id_cache"):
                 db.update_channel(ch["id"], channel_id_cache=cid)
@@ -336,11 +351,12 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                         if db.hit_exists_for(ch["id"], f["keyword"],
                                              p.get("url", ""), pid):
                             continue
-                        db.add_hit(ch["id"], ch["kol_name"], ch["platform"],
-                                   p.get("url", ""), pid,
-                                   p.get("posted_at", ""),
-                                   f["keyword"], f["snippet"],
-                                   kind="brand")
+                        if db.add_hit(ch["id"], ch["kol_name"], ch["platform"],
+                                      p.get("url", ""), pid,
+                                      p.get("posted_at", ""),
+                                      f["keyword"], f["snippet"],
+                                      kind="brand"):
+                            brand_new += 1
 
             _now_iso = datetime.now(timezone.utc).isoformat()
             db.update_channel(ch["id"], status="ok", last_error="",
@@ -411,7 +427,17 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         if not stopped:  # don't LINE-spam a digest on a manual stop
             notify_line.digest([summary])
         db.set_setting("scan_running_since", "")  # finished (or stopped)
+        run_status = ("stopped" if (_STOP.is_set()
+                                    or PROGRESS["done"] < len(channels))
+                      else "done")
     finally:
+        try:
+            db.finish_run(run_id, done=PROGRESS["done"], fetched=fetched,
+                          new_posts=new_posts, hit_posts=len(comp_posts),
+                          hits=hits, brand_hits=brand_new, blocked=blocked,
+                          blocked_json=blocked_list, status=run_status)
+        except Exception:
+            traceback.print_exc()
         PROGRESS.update(running=False, current="",
                         last_run=datetime.now(timezone.utc).isoformat())
         _STOP.clear()

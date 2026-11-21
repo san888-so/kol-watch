@@ -8,7 +8,7 @@ import threading
 import traceback
 import webbrowser
 from http.cookies import SimpleCookie
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 import db
@@ -16,6 +16,7 @@ import registry
 import scheduler
 import ai_review
 import notify_line
+import dash_api
 
 # Railway injects PORT; locally use KOLWATCH_PORT (default 5070).
 PORT = int(os.environ.get("PORT") or os.environ.get("KOLWATCH_PORT") or "5070")
@@ -84,19 +85,27 @@ def _authed(handler):
 
 LOGIN_HTML = """<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>เข้าสู่ระบบ — KOL Watch</title><style>
-body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#e2e8f0;
+<title>เข้าสู่ระบบ — KOL Watch</title>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{font-family:'Anuphan',system-ui,sans-serif;background:#eef2f9;color:#0f1b2d;
 display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
-.box{background:#1e293b;padding:32px;border-radius:12px;width:300px}
-h1{font-size:18px;margin:0 0 18px}label{font-size:12px;color:#94a3b8;display:block;margin:10px 0 4px}
-input{width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #334155;color:#e2e8f0;
-border-radius:6px;padding:9px;font:inherit}button{width:100%;margin-top:18px;background:#3b82f6;
-color:#fff;border:0;padding:10px;border-radius:6px;cursor:pointer;font-size:14px}
-.err{color:#f87171;font-size:13px;margin-top:12px;__ERR__}</style></head><body>
+.box{background:#fff;border:1px solid #e4eaf3;padding:30px;border-radius:16px;width:320px;
+box-shadow:0 10px 30px -12px rgba(15,27,45,.25)}
+.brand{display:flex;gap:10px;align-items:center;margin-bottom:20px}
+.mk{width:38px;height:38px;border-radius:9px;background:#1e5eff;display:grid;place-items:center}
+.brand b{display:block;font-size:16px}.brand small{color:#6b7a90;font-size:12px}
+label{font-size:12px;font-weight:600;color:#6b7a90;display:block;margin:12px 0 5px}
+input{width:100%;box-sizing:border-box;background:#f6f8fc;border:1px solid #e4eaf3;color:#0f1b2d;
+border-radius:9px;padding:10px 12px;font:inherit}input:focus{outline:2px solid #1e5eff;outline-offset:0}
+button{width:100%;margin-top:20px;background:#1e5eff;color:#fff;border:0;padding:11px;border-radius:9px;
+cursor:pointer;font:inherit;font-weight:700}button:hover{background:#1749cc}
+.err{color:#d92d20;font-size:13px;margin-top:12px;__ERR__}</style></head><body>
 <form class="box" method="POST" action="/login">
-<h1>🛡️ KOL Competitor Watch</h1>
-<label>Username</label><input name="username" autofocus autocomplete="username">
-<label>Password</label><input name="password" type="password" autocomplete="current-password">
+<div class="brand"><div class="mk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg></div>
+<div><b>KOL Watch</b><small>Sociology × Webull</small></div></div>
+<label>ชื่อผู้ใช้</label><input name="username" autofocus autocomplete="username">
+<label>รหัสผ่าน</label><input name="password" type="password" autocomplete="current-password">
 <button>เข้าสู่ระบบ</button><div class="err">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</div>
 </form></body></html>"""
 
@@ -359,6 +368,14 @@ API_DOCS = {
     "auth": "Header 'Authorization: Bearer <API key>' (or X-API-Key), or log in on the web",
     "GET": {
         "/api/state": "overview: KOLs, channels, hits, settings, last runs",
+        "/api/overview": "home page numbers: tiles, 14-day series, items needing attention",
+        "/api/runs": "scan log — every scan round (plus older rounds rebuilt from post timestamps)",
+        "/api/run_detail?id=": "posts / hits / failed channels of one scan round",
+        "/api/keywords": "watched competitor words, broad words, client brands, hit counts",
+        "/api/channels": "every monitored channel grouped by KOL (Exclusive first)",
+        "/api/blocked": "channels that could not be checked, with reason + fix",
+        "/api/posts_q?q=&platform=&excl=excl|non&kol=&flag=hit|brand|urgent|watch&from=&to=&sort=&page=&size=": "search the post database",
+        "/api/post?id=": "one post with its hits and AI verdict",
         "/api/posts": "every scanned post (JSON)",
         "/api/posts.csv": "every scanned post (CSV, opens in Excel/Sheets)",
         "/api/export": "every table in the database (JSON, LINE token removed)",
@@ -377,6 +394,24 @@ API_DOCS = {
         "/api/dca_report_test": "send the daily report to LINE NOW (broadcasts!)",
         "/api/ai/review": "(agent) save AI verdicts {model, results:[{seen_post_id, level, competitors, ...}]}",
     },
+}
+
+
+_q1 = lambda q, k, d="": (q.get(k) or [d])[0]
+DASH_GET = {
+    "/api/overview": lambda q: dash_api.overview(),
+    "/api/progress": lambda q: {"progress": scheduler.PROGRESS,
+                                "next": dash_api.next_run(),
+                                "last": (db.list_scan_runs(1) or [None])[0],
+                                "last_check": dash_api.last_check()},
+    "/api/runs": lambda q: dash_api.runs(int(_q1(q, "limit", "2000"))),
+    "/api/run_detail": lambda q: dash_api.run_detail(_q1(q, "id")),
+    "/api/keywords": lambda q: dash_api.keywords(),
+    "/api/channels": lambda q: dash_api.channels(),
+    "/api/blocked": lambda q: dash_api.blocked(),
+    "/api/tables": lambda q: dash_api.tables(),
+    "/api/posts_q": lambda q: dash_api.posts_query(q),
+    "/api/post": lambda q: dash_api.post_detail(int(_q1(q, "id", "0") or 0)),
 }
 
 
@@ -434,6 +469,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             elif path == "/api/state":
                 self._json(200, api_state())
+            elif path in DASH_GET:
+                q = parse_qs(urlparse(self.path).query)
+                self._json(200, DASH_GET[path](q))
             elif path == "/api/posts":
                 self._json(200, {"posts": db.list_all_posts()})
             elif path == "/api/health_check":
@@ -604,7 +642,8 @@ def main():
     # 0.0.0.0 so the platform's router can reach us. Override via env.
     default_host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
     host = os.environ.get("KOLWATCH_HOST", default_host)
-    srv = HTTPServer((host, PORT), Handler)
+    srv = ThreadingHTTPServer((host, PORT), Handler)
+    srv.daemon_threads = True
     url = f"http://{host}:{PORT}"
     print(f"KOL Watch running at {url}")
     if host == "127.0.0.1":
