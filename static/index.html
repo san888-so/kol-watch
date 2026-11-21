@@ -195,6 +195,11 @@ tr:last-child td{border-bottom:0}
 .hbar .v{text-align:right;font-weight:600}
 
 /* channel matrix */
+.pc td,.pc th{padding:7px 8px}
+.pc .hm{text-align:center;font-size:12px;font-weight:600;min-width:34px;border-radius:6px}
+.pc .hm.z{color:var(--faint);font-weight:400}
+.pc tr.kfirst td{border-top:2px solid var(--line)}
+.pc .kn{max-width:180px}
 .mx td{vertical-align:middle}
 .mx .cell{display:flex;flex-direction:column;gap:3px}
 .mx .c{display:inline-flex;gap:5px;align-items:center;font-size:11.5px;font-weight:600;padding:3px 7px;border-radius:7px;background:var(--panel);
@@ -335,6 +340,7 @@ const ICON = {
   log:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
   key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',
   chan:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+  bars:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   block:'<circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/>',
   db:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3"/>',
   trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
@@ -352,6 +358,7 @@ const NAV = [
     {id:'log', th:'ประวัติการตรวจ', en:'Scan Log', ic:'log'},
     {id:'keywords', th:'คำที่เฝ้าระวัง', en:'Watch Words', ic:'key'},
     {id:'channels', th:'ช่องที่ตรวจ', en:'Channels', ic:'chan'},
+    {id:'counts', th:'ยอดโพสต์ต่อช่อง', en:'Posts per Channel', ic:'bars'},
     {id:'blocked', th:'เช็กไม่ได้', en:"Can't Check", ic:'block', badge:'blocked'},
   ]},
   {g:'ข้อมูล', items:[
@@ -664,6 +671,62 @@ function drawChannels(){
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'kol_channels.csv'; a.click();
   };
 }
+/* ═══════════════════════════ POSTS PER CHANNEL ═══════════════════════════ */
+let PC = {data: null, seg: 'excl', plat: '', q: ''};
+const MTH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+async function vCounts(){
+  V().innerHTML = head('ยอดโพสต์ต่อช่อง', 'โพสต์ที่ระบบเก็บได้ ตั้งแต่ 1 ม.ค. 2026 แยกทีละช่องและทีละเดือน') + '<div class="card"><div class="empty">กำลังโหลด…</div></div>';
+  PC.data = await J('/api/post_counts?year=2026'); drawCounts();
+}
+function drawCounts(){
+  const all = PC.data.rows, nowM = new Date().getMonth() + 1;
+  let list = all.filter(r => PC.seg === 'all' || (PC.seg === 'excl') === r.excl);
+  if(PC.plat) list = list.filter(r => r.platform === PC.plat);
+  if(PC.q) list = list.filter(r => r.kol.toLowerCase().includes(PC.q.toLowerCase()));
+  const base = all.filter(r => PC.seg === 'all' || (PC.seg === 'excl') === r.excl);
+  const tot = list.reduce((a, r) => a + r.total, 0);
+  const zero = list.filter(r => !r.total), blk = list.filter(r => r.status === 'blocked');
+  const kols = new Set(list.map(r => r.kol)).size;
+  const mx = Math.max(1, ...list.flatMap(r => r.months.slice(0, nowM)));
+  const plats = [...new Set(all.map(r => r.platform))];
+  const colSum = MTH.map((_, i) => list.reduce((a, r) => a + r.months[i], 0));
+  const hm = n => n ? `<td class="hm" style="background:rgba(30,94,255,${(0.07 + 0.55 * Math.sqrt(n / mx)).toFixed(2)});color:${n / mx > .45 ? '#fff' : 'var(--ink)'}">${num(n)}</td>` : '<td class="hm z">·</td>';
+  let prev = '';
+  const rows = list.map(r => { const first = r.kol !== prev; prev = r.kol;
+    return `<tr class="${first ? 'kfirst' : ''}"><td class="nw kn">${first ? `<b>${esc(r.kol)}</b> ${xb(r.excl)}` : ''}</td>
+      <td class="nw">${pf(r.platform)}${r.status === 'blocked' ? ' <span class="st hot">เช็กไม่ได้</span>' : ''}<div><a class="link small" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 34))}</a></div></td>
+      ${r.months.slice(0, nowM).map(hm).join('')}
+      <td class="num"><b>${num(r.total)}</b>${r.hits ? `<div class="small" style="color:var(--hot)">คู่แข่ง ${num(r.hits)}</div>` : ''}</td>
+      <td class="nw small muted">${r.first ? fmtTH(r.first, false) + ' – ' + fmtTH(r.last, false) : '—'}</td>
+      <td class="small muted" style="min-width:160px">${esc(r.note)}${r.no_date ? `<div>ไม่มีวันที่ ${num(r.no_date)} โพสต์</div>` : ''}</td></tr>`; }).join('');
+  V().innerHTML = head('ยอดโพสต์ต่อช่อง', 'โพสต์ที่ระบบเก็บได้ ตั้งแต่ 1 ม.ค. 2026 แยกทีละช่องและทีละเดือน — รวมการตรวจทุกชั่วโมงและการดึงย้อนหลังทั้งปี') + `
+  <div class="tiles">
+    <div class="tile"><div class="lab">โพสต์ปี 2026</div><div class="num">${num(tot)}</div><div class="sub">${num(kols)} KOL · ${num(list.length)} ช่อง</div></div>
+    <div class="tile"><div class="lab">เฉลี่ยต่อช่อง</div><div class="num">${num(Math.round(tot / Math.max(1, list.length)))}</div><div class="sub">โพสต์ต่อช่อง ตั้งแต่ ม.ค.</div></div>
+    <div class="tile ${zero.length ? 'alert' : ''}"><div class="lab">ช่องที่ยังไม่มีโพสต์ปีนี้</div><div class="num">${num(zero.length)}</div><div class="sub">ไม่โพสต์ หรือดึงไม่ได้</div></div>
+    <div class="tile ${blk.length ? 'alert' : ''}"><div class="lab">เช็กไม่ได้</div><div class="num">${num(blk.length)}</div><div class="sub">ต้องล็อกอิน / บัญชีปิด</div></div>
+  </div>
+  <div class="card">
+    <div class="bar">
+      <div class="seg" id="pcSeg">${[['excl', 'Exclusive'], ['non', 'Non-Exclusive'], ['all', 'ทั้งหมด']].map(([k, l]) => `<button data-k="${k}" class="${PC.seg === k ? 'on' : ''}">${l}<span class="c">${all.filter(r => k === 'all' || (k === 'excl') === r.excl).length}</span></button>`).join('')}</div>
+      <select class="inp" id="pcPlat" style="width:auto"><option value="">ทุกแพลตฟอร์ม</option>${plats.map(p => `<option value="${p}" ${PC.plat === p ? 'selected' : ''}>${esc((PF[p] || [p])[0])} (${base.filter(r => r.platform === p).length})</option>`).join('')}</select>
+      <input class="inp" id="pcq" placeholder="ค้นชื่อ KOL…" value="${esc(PC.q)}" style="width:200px">
+      <button class="btn ghost sm" id="pcCsv" style="margin-left:auto">ดาวน์โหลด CSV</button>
+    </div>
+    <div class="tblwrap"><table class="pc"><thead><tr><th>KOL</th><th>ช่อง</th>${MTH.slice(0, nowM).map(m => `<th class="num">${m}</th>`).join('')}<th class="num">รวม</th><th>โพสต์แรก – ล่าสุด</th><th>หมายเหตุ</th></tr></thead>
+    <tbody>${rows}<tr class="kfirst"><td colspan="2"><b>รวมทุกช่องที่แสดง</b></td>${colSum.slice(0, nowM).map(n => `<td class="num"><b>${num(n)}</b></td>`).join('')}<td class="num"><b>${num(tot)}</b></td><td colspan="2"></td></tr></tbody></table></div>
+    ${list.length ? '' : '<div class="empty">ไม่พบช่อง</div>'}
+  </div>`;
+  V().querySelectorAll('#pcSeg button').forEach(b => b.onclick = () => { PC.seg = b.dataset.k; PC.plat = ''; drawCounts(); });
+  $('#pcPlat').onchange = e => { PC.plat = e.target.value; drawCounts(); };
+  $('#pcq').oninput = e => { PC.q = e.target.value; const pos = e.target.selectionStart; drawCounts(); const i = $('#pcq'); i.focus(); i.setSelectionRange(pos, pos); };
+  $('#pcCsv').onclick = () => {
+    const out = [['KOL', 'Exclusive', 'Tier', 'Platform', 'URL', 'Status', ...MTH, 'Total 2026', 'First post', 'Last post', 'Competitor hits', 'Note']];
+    list.forEach(r => out.push([r.kol, r.excl ? 'Exclusive' : 'Non-Exclusive', r.tier, r.platform, r.url, r.status, ...r.months, r.total, (r.first || '').slice(0, 10), (r.last || '').slice(0, 10), r.hits, r.note]));
+    const csv = '﻿' + out.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'kol_posts_per_channel_2026.csv'; a.click();
+  };
+}
 function showChannel(id){
   let k, c; for(const kk of CH.data.kols){ const f = kk.channels.find(x => x.id === id); if(f){ k = kk; c = f; break; } }
   if(!c) return;
@@ -958,7 +1021,7 @@ async function vSettings(){
 }
 
 /* ═══════════════════════════ router + status ═══════════════════════════ */
-const VIEWS = {home:vHome, hits:vHits, ai:vAi, brand:vBrand, takedown:vTakedown, log:vLog, keywords:vKeywords, channels:vChannels, blocked:vBlocked, db:vDb, settings:vSettings};
+const VIEWS = {home:vHome, hits:vHits, ai:vAi, brand:vBrand, takedown:vTakedown, log:vLog, keywords:vKeywords, channels:vChannels, counts:vCounts, blocked:vBlocked, db:vDb, settings:vSettings};
 async function route(){
   const id = (location.hash.slice(1) || 'home').split('/')[0];
   VIEW = VIEWS[id] ? id : 'home'; renderNav(); setMenu(false); closeDrawer();

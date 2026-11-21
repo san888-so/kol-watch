@@ -385,6 +385,55 @@ def channels():
             "inactive": inactive}
 
 
+# ------------------------------------------------------------ post counts
+# How far back each platform can be read without logging in — shown next
+# to the count so a low number is not mistaken for a quiet KOL.
+_LIMIT_NOTE = {
+    "lemon8": "Lemon8 ไม่ล็อกอินเห็นแค่ ~20 โพสต์ล่าสุด ย้อนหลังไม่ได้",
+}
+
+
+def post_counts(year=2026):
+    """Posts per channel per month for one year (San, 22 Nov 2026 —
+    "สรุปยอดโพสต์ต่อช่อง"). Counts what is in seen_post: the hourly scan
+    plus the backfill of everything since 1 Jan 2026."""
+    y = str(int(year))
+    chans = db.list_channels()
+    with db._conn() as c:
+        months = {}
+        for r in c.execute("""
+                SELECT channel_id, substr(posted_at,6,2) m, count(*) n
+                FROM seen_post WHERE substr(posted_at,1,4)=?
+                GROUP BY channel_id, m""", (y,)):
+            months.setdefault(r[0], {})[r[1]] = r[2]
+        span = {r[0]: (r[1], r[2]) for r in c.execute("""
+                SELECT channel_id, min(posted_at), max(posted_at) FROM seen_post
+                WHERE substr(posted_at,1,4)=? GROUP BY channel_id""", (y,))}
+        nodate = dict(c.execute("""SELECT channel_id, count(*) FROM seen_post
+                WHERE coalesce(posted_at,'')='' GROUP BY channel_id""").fetchall())
+        hits = dict(c.execute("""SELECT channel_id, count(DISTINCT post_id)
+                FROM hit WHERE kind='competitor' AND substr(posted_at,1,4)=?
+                GROUP BY channel_id""", (y,)).fetchall())
+    rows = []
+    for ch in chans:
+        m = months.get(ch["id"], {})
+        mm = [m.get(f"{i:02d}", 0) for i in range(1, 13)]
+        first, last = span.get(ch["id"], ("", ""))
+        note = _LIMIT_NOTE.get(ch["platform"], "")
+        if ch["status"] == "blocked":
+            note = (ch.get("last_error") or "เช็กไม่ได้")[:140]
+        rows.append({
+            "id": ch["id"], "kol": ch["kol_name"],
+            "excl": _is_excl(ch.get("kol_exclusivity")),
+            "tier": ch.get("kol_tier") or "", "platform": ch["platform"],
+            "url": ch["profile_url"], "status": ch["status"],
+            "total": sum(mm), "months": mm, "first": first, "last": last,
+            "no_date": nodate.get(ch["id"], 0), "hits": hits.get(ch["id"], 0),
+            "note": note})
+    rows.sort(key=lambda r: (not r["excl"], r["kol"].lower(), r["platform"]))
+    return {"year": int(y), "rows": rows}
+
+
 # ------------------------------------------------------------ blocked
 def blocked():
     chans = db.list_channels()
