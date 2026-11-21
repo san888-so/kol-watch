@@ -216,6 +216,8 @@ def init():
                 c.execute(f"ALTER TABLE ai_review ADD COLUMN {col} TEXT")
         for k, v in DEFAULT_SETTINGS.items():
             c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
+    # Posts before the competitor-watch start are not breaches: hide them.
+    retire_old_competitor_hits()
 
 
 def get_setting(key, default=None):
@@ -397,8 +399,47 @@ def list_all_posts():
 
 # --- hits ---
 
+# Competitor watch starts on this date (San, 22 Nov 2026: "ปี 68 ไม่ผิด
+# ไม่ต้องโชว์"). Posts dated before it are not a breach, so no competitor
+# hit is recorded for them. Override with setting `competitor_watch_from`.
+WATCH_FROM_DEFAULT = "2026-01-01"
+
+
+def watch_from():
+    v = (get_setting("competitor_watch_from", WATCH_FROM_DEFAULT) or "").strip()
+    return v[:10] or WATCH_FROM_DEFAULT
+
+
+def before_watch(posted_at, start=None):
+    """True when the post date (ISO, 'YYYY-MM-DD...') is before the watch
+    start. A post with no / unreadable date is NOT before (keep it, to be safe)."""
+    d = (posted_at or "")[:10]
+    if len(d) != 10 or not d[:4].isdigit() or d[4] != "-":
+        return False
+    return d < (start or watch_from())
+
+
+def retire_old_competitor_hits(start=None):
+    """Move competitor hits on posts dated before the watch start to kind
+    'competitor_old' — hidden from every page/count (they query
+    kind='competitor') but kept, so nothing is lost if the date moves."""
+    start = start or watch_from()
+    with _lock, _conn() as c:
+        n = c.execute("""UPDATE hit SET kind='competitor_old'
+            WHERE kind='competitor' AND length(posted_at) >= 10
+              AND substr(posted_at,1,4) GLOB '[0-9][0-9][0-9][0-9]'
+              AND substr(posted_at,1,10) < ?""", (start,)).rowcount
+        # Undo for hits that are on/after a start moved earlier.
+        c.execute("""UPDATE hit SET kind='competitor'
+            WHERE kind='competitor_old' AND substr(posted_at,1,10) >= ?""",
+                  (start,))
+        return n
+
+
 def add_hit(channel_id, kol_name, platform, post_url, post_id,
             posted_at, matched_keyword, snippet, kind="competitor"):
+    if kind == "competitor" and before_watch(posted_at):
+        return None   # before the watch start: not a breach
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _conn() as c:
         try:
