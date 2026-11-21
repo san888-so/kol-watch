@@ -201,7 +201,11 @@ def sync_from_sheet(sheet_id, gid=None):
         for platform, urls in extra.get(key, {}).items():
             links += [(platform, u) for u in urls]
         for platform, raw in links:
-            if platform in skip_here:  # team said: don't check this one
+            # team said: don't check this one — a whole platform ("x") or
+            # one link ("x.com/jadenipat7", a dead old handle) so the
+            # KOL's other account on that platform stays on.
+            if platform in skip_here or any(
+                    "/" in s and s in raw.lower() for s in skip_here):
                 skipped += 1
                 continue
             url = _extract_url(raw)
