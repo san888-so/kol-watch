@@ -256,13 +256,29 @@ def collect(channel, limit=10, windowed=True):
         payload = {
             "searchTerms": [f"from:{user}"], "maxItems": n, "sort": "Latest",
         }
-        raw = prov._call_actor_sync(ACTORS["x_tweets"], payload)
-        # A renamed/deleted account comes back as one placeholder item with
-        # no id — keeping it made the channel look "ok" for months (เจต's
-        # @jadenipat7 → @jadejoodfire, Sep–Nov 2026). Drop it so the scan
-        # gets 0 posts and marks the channel blocked.
-        out = [_shape(normalize_x_tweet(r, "apify")) for r in raw[:n]]
-        return [p for p in out if p["post_id"] and "/status/" in (p["url"] or "")]
+        def _keep(raw):
+            # A renamed/deleted account comes back as one placeholder item
+            # with no id — keeping it made the channel look "ok" for months
+            # (เจต's @jadenipat7 → @jadejoodfire, Sep–Nov 2026). Drop it so
+            # the scan gets 0 posts and marks the channel blocked.
+            out = [_shape(normalize_x_tweet(r, "apify")) for r in raw[:n]]
+            return [p for p in out
+                    if p["post_id"] and "/status/" in (p["url"] or "")]
+
+        try:
+            got = _keep(prov._call_actor_sync(ACTORS["x_tweets"], payload))
+        except Exception:
+            got = []
+        if got:
+            return got
+        # apidojo's search died after X's 21 Nov 2026 update ("Search is
+        # temporarily unavailable") and returns 0 items with SUCCEEDED, so
+        # every X channel looked blocked. Fall back to kaitoeasyapi (same
+        # tweet shape, ~$0.25/1K) before calling the channel empty.
+        return _keep(prov._call_actor_sync(ACTORS["x_tweets_cheap"], {
+            "twitterContent": f"from:{user}", "maxItems": n,
+            "queryType": "Latest",
+        }))
 
     if platform == "threads":
         m = re.search(r"threads\.(?:com|net)/@([\w.]+)", url)
