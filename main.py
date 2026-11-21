@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import threading
+import time
 import traceback
 import webbrowser
 from http.cookies import SimpleCookie
@@ -17,6 +18,7 @@ import scheduler
 import ai_review
 import notify_line
 import dash_api
+import hr_auth
 
 # Railway injects PORT; locally use KOLWATCH_PORT (default 5070).
 PORT = int(os.environ.get("PORT") or os.environ.get("KOLWATCH_PORT") or "5070")
@@ -45,7 +47,6 @@ USERS = _pairs("KOLWATCH_USERS")
 if AUTH_USER and AUTH_PASS:
     USERS.setdefault(AUTH_USER, AUTH_PASS)
 API_KEYS = {v: k for k, v in _pairs("KOLWATCH_API_KEYS").items()}
-_SESSIONS = set()
 
 
 def _check_login(u, p):
@@ -69,16 +70,27 @@ def _api_key_user(handler):
     return None
 
 
-def _new_session():
-    tok = secrets.token_urlsafe(32)
-    _SESSIONS.add(tok)
-    return tok
+_FAILS = {}   # ip -> [count, first_ts] — slows password guessing
+
+
+def _cookies(handler):
+    return SimpleCookie(handler.headers.get("Cookie", ""))
+
+
+def current_user(handler):
+    """Signed-cookie user ({u, n, via}) or None. HR users must still be on
+    the allow-list (setting hr_users) — removing a name locks them out now."""
+    m = _cookies(handler).get("kw_auth")
+    obj = hr_auth.unsign(m.value) if m else None
+    if not obj:
+        return None
+    if obj.get("via") == "account":           # shared env account (legacy)
+        return obj if obj.get("u") in USERS else None
+    return obj if hr_auth.is_allowed(obj.get("u")) else None
 
 
 def _authed(handler):
-    cookie = SimpleCookie(handler.headers.get("Cookie", ""))
-    m = cookie.get("kw_session")
-    if m and m.value in _SESSIONS:
+    if current_user(handler):
         return True
     return _api_key_user(handler) is not None
 
@@ -89,25 +101,62 @@ LOGIN_HTML = """<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 body{font-family:'Anuphan',system-ui,sans-serif;background:#eef2f9;color:#0f1b2d;
-display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
-.box{background:#fff;border:1px solid #e4eaf3;padding:30px;border-radius:16px;width:320px;
-box-shadow:0 10px 30px -12px rgba(15,27,45,.25)}
-.brand{display:flex;gap:10px;align-items:center;margin-bottom:20px}
+display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:16px;box-sizing:border-box}
+.box{background:#fff;border:1px solid #e4eaf3;padding:30px;border-radius:16px;width:340px;max-width:100%;
+box-shadow:0 10px 30px -12px rgba(15,27,45,.25);box-sizing:border-box}
+.brand{display:flex;gap:10px;align-items:center;margin-bottom:18px}
 .mk{width:38px;height:38px;border-radius:9px;background:#1e5eff;display:grid;place-items:center}
 .brand b{display:block;font-size:16px}.brand small{color:#6b7a90;font-size:12px}
+.line{display:flex;gap:10px;align-items:center;justify-content:center;width:100%;box-sizing:border-box;background:#06c755;
+color:#fff;border-radius:9px;padding:11px;font-weight:700;text-decoration:none;font-size:14px}
+.line:hover{background:#05b04b}
+.or{display:flex;align-items:center;gap:10px;color:#9aa8bd;font-size:12px;margin:18px 0 4px}
+.or:before,.or:after{content:"";flex:1;height:1px;background:#e4eaf3}
 label{font-size:12px;font-weight:600;color:#6b7a90;display:block;margin:12px 0 5px}
 input{width:100%;box-sizing:border-box;background:#f6f8fc;border:1px solid #e4eaf3;color:#0f1b2d;
 border-radius:9px;padding:10px 12px;font:inherit}input:focus{outline:2px solid #1e5eff;outline-offset:0}
-button{width:100%;margin-top:20px;background:#1e5eff;color:#fff;border:0;padding:11px;border-radius:9px;
+button{width:100%;margin-top:18px;background:#1e5eff;color:#fff;border:0;padding:11px;border-radius:9px;
 cursor:pointer;font:inherit;font-weight:700}button:hover{background:#1749cc}
-.err{color:#d92d20;font-size:13px;margin-top:12px;__ERR__}</style></head><body>
-<form class="box" method="POST" action="/login">
+.err{background:#fef3f2;border:1px solid #fecdca;color:#b42318;font-size:13px;margin-bottom:14px;padding:9px 12px;border-radius:9px;__ERR__}
+.hint{color:#9aa8bd;font-size:11.5px;margin-top:14px;text-align:center}</style></head><body>
+<div class="box">
 <div class="brand"><div class="mk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg></div>
 <div><b>KOL Watch</b><small>Sociology × Webull</small></div></div>
-<label>ชื่อผู้ใช้</label><input name="username" autofocus autocomplete="username">
-<label>รหัสผ่าน</label><input name="password" type="password" autocomplete="current-password">
-<button>เข้าสู่ระบบ</button><div class="err">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</div>
-</form></body></html>"""
+<div class="err">__MSG__</div>
+<a class="line" href="/sso/start"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.5s5.8-3.4 7.9-5.9C21.3 14.3 22 12.7 22 11c0-4.4-4.5-8-10-8z"/></svg>เข้าด้วย LINE (SO! HR)</a>
+<div class="or">หรือใช้รหัส SO! HR</div>
+<form method="POST" action="/login">
+<label>ชื่อผู้ใช้ SO! HR</label><input name="username" autocomplete="username" autocapitalize="none" placeholder="เช่น petch">
+<label>รหัสผ่าน SO! HR</label><input name="password" type="password" autocomplete="current-password">
+<button>เข้าสู่ระบบ</button></form>
+<div class="hint">ใช้บัญชีเดียวกับ hr.sociology.asia</div>
+</div></body></html>"""
+
+
+def login_page(msg=""):
+    import html as _h
+    return (LOGIN_HTML.replace("__ERR__", "" if msg else "display:none")
+            .replace("__MSG__", _h.escape(msg)))
+
+
+def _client_ip(handler):
+    return (handler.headers.get("X-Forwarded-For") or handler.client_address[0]
+            or "?").split(",")[0].strip()
+
+
+def _public_base(handler):
+    env = os.environ.get("KOLWATCH_PUBLIC_URL", "")
+    if env:
+        return env.rstrip("/")
+    proto = (handler.headers.get("X-Forwarded-Proto") or "http").split(",")[0].strip()
+    host = (handler.headers.get("X-Forwarded-Host") or handler.headers.get("Host")
+            or f"127.0.0.1:{PORT}").split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+def _cookie_attrs(handler, max_age):
+    secure = "; Secure" if _public_base(handler).startswith("https") else ""
+    return f"; HttpOnly; SameSite=Lax; Path=/; Max-Age={max_age}{secure}"
 
 
 def _html():
@@ -356,7 +405,7 @@ def api_settings(payload):
               "dca_campaigns", "dca_links",
               "ai_review_enabled", "ai_alerts_enabled",
               "ai_alert_max_age_days", "ai_review_policy",
-              "extra_channels", "exclusive_override"):
+              "extra_channels", "exclusive_override", "hr_users"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):
@@ -444,20 +493,59 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
 
+    def _login_ok(self, username, name, via):
+        tok = hr_auth.session_cookie(username, name, via)
+        self._redirect("/", extra_headers=[
+            ("Set-Cookie", "kw_auth=" + tok + _cookie_attrs(self, hr_auth.SESSION_TTL)),
+            ("Set-Cookie", "kw_sso=" + _cookie_attrs(self, 0))])
+
+    def _sso_callback(self):
+        q = parse_qs(urlparse(self.path).query)
+        m = _cookies(self).get("kw_sso")
+        st = hr_auth.unsign(m.value) if m else None
+        state = (q.get("state") or [""])[0]
+        if not st or not hmac.compare_digest(state, st.get("s", "x")):
+            self._redirect("/login?e=failed")
+            return
+        u = hr_auth.exchange((q.get("code") or [""])[0],
+                             _public_base(self) + "/sso/callback")
+        if not u:
+            self._redirect("/login?e=failed")
+            return
+        if not hr_auth.is_allowed(u["username"]):
+            print(f"[auth] LINE login denied (not on list): {u['username']}", flush=True)
+            self._redirect("/login?e=denied")
+            return
+        hr_auth.remember(u, "line")
+        print(f"[auth] LINE login: {u['username']}", flush=True)
+        self._login_ok(u["username"].lower(), hr_auth.display_name(u), "line")
+
     def do_GET(self):
         path = urlparse(self.path).path
         try:
             if path == "/login":
-                self._send_html(LOGIN_HTML.replace("__ERR__", "display:none"))
+                q = parse_qs(urlparse(self.path).query)
+                msg = {"failed": "เข้าด้วย LINE ไม่สำเร็จ ลองอีกครั้งหรือใช้รหัสผ่าน SO! HR",
+                       "denied": "บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้ KOL Watch (แจ้ง San)"
+                       }.get((q.get("e") or [""])[0], "")
+                self._send_html(login_page(msg))
                 return
-            if not _authed(self):
-                self._redirect("/login")
+            if path == "/sso/start":
+                state = secrets.token_urlsafe(16)
+                self._redirect(
+                    hr_auth.authorize_url(_public_base(self) + "/sso/callback", state),
+                    extra_headers=[("Set-Cookie", "kw_sso=" + hr_auth.sign(
+                        {"s": state, "exp": int(time.time()) + 600})
+                        + _cookie_attrs(self, 600))])
+                return
+            if path == "/sso/callback":
+                self._sso_callback()
                 return
             if path == "/logout":
-                cookie = SimpleCookie(self.headers.get("Cookie", ""))
-                m = cookie.get("kw_session")
-                if m:
-                    _SESSIONS.discard(m.value)
+                self._redirect("/login", extra_headers=[
+                    ("Set-Cookie", "kw_auth=" + _cookie_attrs(self, 0))])
+                return
+            if not _authed(self):
                 self._redirect("/login")
                 return
             if path == "/":
@@ -469,6 +557,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             elif path == "/api/state":
                 self._json(200, api_state())
+            elif path == "/api/me":
+                u = current_user(self)
+                self._json(200, {"user": u and {"username": u["u"], "name": u.get("n"),
+                                                "via": u.get("via")},
+                                 "api_key": _api_key_user(self)})
+            elif path == "/api/users":
+                self._json(200, {"users": hr_auth.list_users(),
+                                 "allowed": hr_auth.allowed_users()})
             elif path in DASH_GET:
                 q = parse_qs(urlparse(self.path).query)
                 self._json(200, DASH_GET[path](q))
@@ -580,15 +676,34 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/login":
             n = int(self.headers.get("Content-Length", "0"))
             form = parse_qs(self.rfile.read(n).decode("utf-8")) if n else {}
-            u = (form.get("username", [""])[0])
+            u = (form.get("username", [""])[0]).strip()
             p = (form.get("password", [""])[0])
-            if _check_login(u, p):
-                tok = _new_session()
-                self._redirect("/", extra_headers=[
-                    ("Set-Cookie",
-                     f"kw_session={tok}; HttpOnly; SameSite=Lax; Path=/")])
-            else:
-                self._send_html(LOGIN_HTML.replace("__ERR__", ""), code=401)
+            ip = _client_ip(self)
+            rec = _FAILS.get(ip)
+            if rec and rec[0] >= 10 and time.time() - rec[1] < 300:
+                self._send_html(login_page("ลองผิดหลายครั้งเกินไป รอ 5 นาทีแล้วลองใหม่"), code=429)
+                return
+            if u in USERS and _check_login(u, p):     # shared env account (legacy)
+                _FAILS.pop(ip, None)
+                self._login_ok(u, u, "account")
+                return
+            user, err = hr_auth.verify_password(u.lower(), p) if u and p else (
+                None, "กรอกชื่อผู้ใช้และรหัสผ่าน SO! HR")
+            if user and not hr_auth.is_allowed(user["username"]):
+                print(f"[auth] password login denied (not on list): {user['username']}", flush=True)
+                self._send_html(login_page("บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้ KOL Watch (แจ้ง San)"), code=403)
+                return
+            if user:
+                _FAILS.pop(ip, None)
+                hr_auth.remember(user, "password")
+                print(f"[auth] password login: {user['username']}", flush=True)
+                self._login_ok(user["username"].lower(), hr_auth.display_name(user), "password")
+                return
+            if not rec or time.time() - rec[1] >= 300:
+                rec = [0, time.time()]
+            rec[0] += 1
+            _FAILS[ip] = rec
+            self._send_html(login_page(err), code=401)
             return
         if not _authed(self):
             self._json(401, {"error": "unauthorized"})
@@ -630,11 +745,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    if not USERS:
+    if not USERS and not os.environ.get("HR_SSO_KEY"):
         import sys
-        sys.exit("Set KOLWATCH_USER and KOLWATCH_PASS (see .env.example) "
+        sys.exit("Set HR_SSO_KEY (SO! HR login) or KOLWATCH_USER/KOLWATCH_PASS "
                  "before starting.")
     db.init()
+    hr_auth.init()
     stop = threading.Event()
     threading.Thread(target=scheduler.scheduler_thread, args=(stop,),
                      daemon=True).start()

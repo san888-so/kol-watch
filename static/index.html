@@ -276,7 +276,7 @@ body[data-drawer="open"] .scrim{z-index:29}
       <button class="btn ghost sm" id="syncBtn" title="ดึงรายชื่อ KOL/ลิงก์ล่าสุดจาก Google Sheet"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg><span class="lbl">ซิงก์ชีต</span></button>
       <button class="btn sm" id="runBtn"><svg viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z"/></svg><span class="lbl">ตรวจเดี๋ยวนี้</span></button>
       <button class="btn danger sm" id="stopBtn" style="display:none"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span class="lbl">หยุด</span></button>
-      <div class="user"><div class="av">SO</div><div><b style="font-size:13px">Sociology</b><small><a href="/logout">ออกจากระบบ</a></small></div></div>
+      <div class="user"><div class="av" id="uav">··</div><div><b style="font-size:13px" id="uname">…</b><small><a href="/logout">ออกจากระบบ</a></small></div></div>
     </header>
     <main class="content"><div class="view" id="view"></div></main>
   </div>
@@ -869,7 +869,17 @@ async function vSettings(){
     ${F('ai_alert_max_age_days', 'เด้งเฉพาะโพสต์ที่ลงภายใน (วัน)')}
     ${F('ai_review_policy', 'กติกาให้ AI (เขียนภาษาคนได้ · เว้นว่าง = กติกามาตรฐาน)', '', true, 5)}
   </div></div>
+  <div class="card"><div class="hd"><div><h3>คนที่เข้าใช้ได้ (ล็อกอินด้วย SO! HR)</h3><small>ใส่ชื่อผู้ใช้ SO! HR คั่นด้วย , — ลบชื่อออก = เข้าไม่ได้ทันที</small></div></div>
+    <div class="form"><div class="full"><label for="hr_users">ชื่อผู้ใช้ SO! HR ที่อนุญาต</label><input id="hr_users"></div></div>
+    <div class="tblwrap" style="margin-top:12px" id="userTbl"><div class="empty">กำลังโหลด…</div></div></div>
   <div class="bar"><button class="btn" id="saveBtn">บันทึกการตั้งค่า</button></div>`;
+  J('/api/users').then(u => {
+    $('#hr_users').value = u.allowed.join(', ');
+    $('#userTbl').innerHTML = `<table><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อ</th><th>ตำแหน่ง</th><th>สิทธิ์</th><th>เข้าล่าสุด</th><th class="num">เข้าแล้ว</th></tr></thead><tbody>
+      ${u.users.map(x => `<tr><td><b>${esc(x.username)}</b></td><td>${esc(x.name_en || '')} <span class="faint small">${esc(x.name_th || '')}</span></td><td class="small muted">${esc(x.position || '')}</td>
+        <td>${x.allowed ? '<span class="st ok">เข้าได้</span>' : '<span class="st off">ไม่มีสิทธิ์</span>'}</td>
+        <td class="small nw">${x.last_login ? fmtTH(x.last_login) + ' · ' + (x.via === 'line' ? 'LINE' : 'รหัส') : '<span class="faint">ยังไม่เคยเข้า</span>'}</td><td class="num">${x.logins || 0}</td></tr>`).join('')}</tbody></table>`;
+  });
   ['run_times', 'auto_enabled', 'posts_per_check', 'scan_platforms', 'sheet_id', 'enable_bd_fallback', 'line_to', 'brand_kols_per_bubble', 'ai_review_enabled', 'ai_alerts_enabled', 'ai_alert_max_age_days', 'ai_review_policy']
     .forEach(k => $('#' + k).value = s[k] ?? '');
   $('#line_mode').value = s.line_mode || 'broadcast';
@@ -880,7 +890,7 @@ async function vSettings(){
   V().querySelectorAll('.lsrc').forEach(a => a.onclick = e => { e.preventDefault(); $('#line_to').value = a.dataset.id; });
   $('#saveBtn').onclick = async () => {
     for(const k of ['watchlist', 'watchlist_unbranded', 'client_brands']){ try { JSON.parse($('#' + k).value || '{}'); } catch(e){ toast('JSON ผิดรูปแบบในช่อง ' + k); return; } }
-    const b = {}; ['run_times', 'auto_enabled', 'posts_per_check', 'scan_platforms', 'sheet_id', 'enable_bd_fallback', 'line_to', 'line_mode', 'brand_kols_per_bubble', 'ai_review_enabled', 'ai_alerts_enabled', 'ai_alert_max_age_days', 'ai_review_policy', 'watchlist', 'watchlist_unbranded', 'client_brands'].forEach(k => b[k] = $('#' + k).value);
+    const b = {hr_users: $('#hr_users').value}; ['run_times', 'auto_enabled', 'posts_per_check', 'scan_platforms', 'sheet_id', 'enable_bd_fallback', 'line_to', 'line_mode', 'brand_kols_per_bubble', 'ai_review_enabled', 'ai_alerts_enabled', 'ai_alert_max_age_days', 'ai_review_policy', 'watchlist', 'watchlist_unbranded', 'client_brands'].forEach(k => b[k] = $('#' + k).value);
     if($('#line_token').value.trim()) b.line_token = $('#line_token').value.trim();
     const r = await P('/api/settings', b); toast(r.error || 'บันทึกแล้ว'); $('#line_token').value = '';
   };
@@ -923,6 +933,7 @@ const setMenu = open => { document.body.dataset.menu = open ? 'open' : 'closed';
 $('#burger').onclick = () => setMenu(document.body.dataset.menu !== 'open');
 
 route(); pollStatus(); setInterval(pollStatus, 5000);
+J('/api/me').then(m => { const n = (m.user && m.user.name) || m.api_key || '—'; $('#uname').textContent = n; $('#uav').textContent = n.slice(0, 2).toUpperCase(); });
 setInterval(() => { if(VIEW === 'home' && document.body.dataset.drawer !== 'open') vHome(); }, 60000);
 </script>
 </body>
