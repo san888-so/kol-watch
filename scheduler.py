@@ -8,6 +8,7 @@ import json
 import threading
 import traceback
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -310,14 +311,41 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
     comp_posts = []   # one entry per post with a new competitor hit (digest list)
     brand_wl = matcher.get_client_brands()
     unbranded_wl = matcher.get_unbranded_watchlist()
+    def _fetch(ch):
+        posts = _collect_with_retry(ch, limit)
+        # A busy X account can tweet more than one page between two
+        # scans (ม้าเฉียว / SundayBoyInvest: 50-80 a day). If not one of
+        # the fetched tweets was seen before, older ones may be missing:
+        # read a bigger page once (San, 22 Nov 2026 — full coverage).
+        if (ch["platform"] == "x" and len(posts or []) >= 10
+                and not any(db.post_seen(ch["id"], p.get("post_id") or "")
+                            for p in posts)):
+            try:
+                posts = collectors.collect(ch, limit=60) or posts
+            except Exception:
+                pass
+        return posts
+
+    # Fetch several channels at once (San, 22 Nov 2026): one at a time, a
+    # slow X scraper (~40-90s per account) stretched a full round to 1.5h,
+    # so the hourly Exclusive rounds in between were skipped. Posts are
+    # still processed in channel order below; Lemon8 (Playwright browser)
+    # stays on this thread.
     try:
-        for ch in channels:
+        workers = max(1, int(db.get_setting("scan_workers", "6") or "6"))
+    except ValueError:
+        workers = 6
+    pool = ThreadPoolExecutor(max_workers=workers)
+    futs = {i: pool.submit(_fetch, ch) for i, ch in enumerate(channels)
+            if ch["platform"] != "lemon8"}
+    try:
+        for i, ch in enumerate(channels):
             if _STOP.is_set():
                 stopped = True
                 break
             PROGRESS["current"] = f"{ch['kol_name']} / {ch['platform']}"
             try:
-                posts = _collect_with_retry(ch, limit)
+                posts = futs[i].result() if i in futs else _fetch(ch)
             except Exception as e:
                 blocked += 1
                 blocked_list.append({"kol": ch["kol_name"],
@@ -330,17 +358,6 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                 PROGRESS["done"] += 1
                 continue
 
-            # A busy X account can tweet more than one page between two
-            # scans (ม้าเฉียว / SundayBoyInvest: 50-80 a day). If not one of
-            # the fetched tweets was seen before, older ones may be missing:
-            # read a bigger page once (San, 22 Nov 2026 — full coverage).
-            if (ch["platform"] == "x" and len(posts or []) >= 10
-                    and not any(db.post_seen(ch["id"], p.get("post_id") or "")
-                                for p in posts)):
-                try:
-                    posts = collectors.collect(ch, limit=60) or posts
-                except Exception:
-                    pass
             fetched += len(posts or [])
             cid = ch.get("_resolved_channel_id")
             if cid and not ch.get("channel_id_cache"):
@@ -522,6 +539,8 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
                                     or PROGRESS["done"] < len(channels))
                       else "done")
     finally:
+        # Stopped/failed mid-round: drop fetches not started yet.
+        pool.shutdown(wait=False, cancel_futures=True)
         try:
             db.finish_run(run_id, done=PROGRESS["done"], fetched=fetched,
                           new_posts=new_posts, hit_posts=len(comp_posts),
