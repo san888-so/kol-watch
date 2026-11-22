@@ -145,6 +145,23 @@ _PLAT_TH = {"facebook": "FB", "instagram": "IG", "tiktok": "TikTok",
 _DIGEST_MAX_POSTS = 15
 
 
+def _blocked_lines(blocked_list):
+    """Short list under "❌ เช็กไม่ได้": one line per KOL with the failed
+    socials, e.g. "   • ม้าเฉียว — FB, X" (San, 22 Nov 2026)."""
+    by_kol = {}
+    for b in blocked_list:
+        plats = by_kol.setdefault(b["kol"], [])
+        name = _PLAT_TH.get(b["platform"], b["platform"])
+        if name not in plats:
+            plats.append(name)
+    out = [f"   • {k} — {', '.join(v)}"
+           for k, v in list(by_kol.items())[:_DIGEST_MAX_POSTS]]
+    rest = len(by_kol) - _DIGEST_MAX_POSTS
+    if rest > 0:
+        out.append(f"   …และอีก {rest} คน")
+    return "\n".join(out)
+
+
 def _competitor_post_lines(posts):
     """Digest block: one numbered entry per post (not per keyword), so the
     team can follow up each post. Capped to keep the LINE text under 5000."""
@@ -475,6 +492,8 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
             f"📊 เจอโพส {brand_label}: {brand_sent}  (เฉพาะโพสต์ลงภายใน {max_age_days} วัน)\n"
             f"❌ เช็กไม่ได้: {blocked}"
         )
+        if blocked_list:
+            summary += "\n" + _blocked_lines(blocked_list)
         if comp_posts:
             summary += "\n" + _competitor_post_lines(comp_posts)
         budget = _apify_budget_line()
