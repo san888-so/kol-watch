@@ -914,9 +914,9 @@ async function vHits(){
     <span class="muted small" style="margin-left:auto">${num(list.length)} รายการ</span></div>
     ${list.length ? `<div class="tblwrap"><table><thead><tr><th>เจอเมื่อ</th><th>KOL</th><th>คำ</th><th>ข้อความรอบคำ</th><th>ทีมตัดสิน</th><th>สถานะ</th><th></th></tr></thead><tbody>
     ${list.map(h => `<tr><td class="nw small">${fmtTH(h.detected_at)}<div class="faint">โพสต์ ${fmtTH(h.posted_at, false)}</div></td><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)}</div></td>
-      <td><span class="chip k">${esc(h.matched_keyword)}</span></td><td><div class="cap">${esc(h.snippet)}</div></td>
-      <td class="nw">${h.verdict ? `<span class="st ${h.verdict === 'competitor' ? 'hot' : 'ok'}">${h.verdict === 'competitor' ? 'คู่แข่งจริง' : 'ผ่าน'}</span><div class="faint small">${esc(h.verdict_by || '')}</div>` : '<span class="faint small">ยังไม่กด</span>'}</td>
-      <td><select class="inp" data-id="${h.id}" style="padding:5px 8px">${Object.entries(HS).map(([k, [l]]) => `<option value="${k}" ${h.handle_status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><span class="chip k" style="white-space:normal;max-width:140px">${esc(h.matched_keyword)}</span></td><td><div class="cap">${esc(h.snippet)}</div></td>
+      <td style="min-width:96px">${h.verdict ? `<span class="st ${h.verdict === 'competitor' ? 'hot' : 'ok'}">${h.verdict === 'competitor' ? 'คู่แข่งจริง' : 'ผ่าน'}</span><div class="faint small">${esc(h.verdict_by || '')}</div>` : '<span class="faint small">ยังไม่กด</span>'}</td>
+      <td><select class="inp" data-id="${h.id}" style="padding:5px 6px;width:auto;max-width:132px">${Object.entries(HS).map(([k, [l]]) => `<option value="${k}" ${h.handle_status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td><a class="link nw" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ไม่มีรายการ 🎉</div>'}</div>`;
   V().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { HITF = b.dataset.f; vHits(); });
   V().querySelectorAll('select[data-id]').forEach(s => s.onchange = async () => { await P('/api/hit_status', {id: s.dataset.id, status: s.value}); toast('บันทึกสถานะแล้ว'); const h = STATE.hits.find(x => x.id == s.dataset.id); if(h) h.handle_status = s.value; BADGE.open_hits = STATE.hits.filter(x => x.handle_status === 'new').length; renderNav(); });
