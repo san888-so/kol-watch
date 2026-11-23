@@ -528,7 +528,8 @@ def _ai_comments_pending(q):
             "pending_total": comments.ai_pending_count(),
             "policy": db.get_setting("ai_review_policy", "") or "",
             "known_competitors": list(matcher.get_watchlist().keys()),
-            "comments": comments.ai_pending(int(_q1(q, "limit", "5") or 5))}
+            "comments": comments.ai_pending(int(_q1(q, "limit", "5") or 5),
+                                            _q1(q, "agent", ""))}
 DASH_GET = {
     "/api/overview": lambda q: dash_api.overview(),
     "/api/progress": lambda q: {"progress": scheduler.PROGRESS,

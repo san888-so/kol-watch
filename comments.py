@@ -589,24 +589,44 @@ def _ai_where():
         AND ((cm.matched IS NOT NULL AND cm.matched!='') OR {_PROMO_SQL})"""
 
 
-def ai_pending(limit):
-    with db._conn() as c:
-        rows = c.execute(f"""
-            SELECT cm.id comment_pk, cm.text, cm.matched, cm.posted_at, cm.pinned,
-                   cm.platform, k.name kol, sp.post_url, sp.caption post_caption
-            FROM comment cm
-            JOIN seen_post sp ON sp.id=cm.seen_post_id
-            JOIN channel ch ON ch.id=sp.channel_id JOIN kol k ON k.id=ch.kol_id
-            LEFT JOIN comment_ai a ON a.comment_pk=cm.id
-            WHERE {_ai_where()}
-            ORDER BY (cm.matched IS NOT NULL AND cm.matched!='') DESC,
-                     cm.posted_at DESC
-            LIMIT ?""", (max(1, min(int(limit or 5), 50)),)).fetchall()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["post_caption"] = (d.get("post_caption") or "")[:800]
-        out.append(d)
+# Two machines read the queue (sanpc + sanmini): each comment handed out is
+# leased to that agent for LEASE_SEC so the other one skips it.
+LEASE_SEC = 900
+_LEASE = {}          # comment_pk -> (agent, expires_ts)
+AGENTS = {}          # agent name -> {"seen": iso, "done": n}
+
+
+def ai_pending(limit, agent=""):
+    limit = max(1, min(int(limit or 5), 50))
+    now = time.time()
+    agent = (agent or "agent")[:40]
+    AGENTS.setdefault(agent, {"done": 0})["seen"] = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        for pk in [k for k, (_, exp) in _LEASE.items() if exp < now]:
+            _LEASE.pop(pk, None)
+        taken = {pk for pk, (a, _) in _LEASE.items() if a != agent}
+        with db._conn() as c:
+            rows = c.execute(f"""
+                SELECT cm.id comment_pk, cm.text, cm.matched, cm.posted_at, cm.pinned,
+                       cm.platform, k.name kol, sp.post_url, sp.caption post_caption
+                FROM comment cm
+                JOIN seen_post sp ON sp.id=cm.seen_post_id
+                JOIN channel ch ON ch.id=sp.channel_id JOIN kol k ON k.id=ch.kol_id
+                LEFT JOIN comment_ai a ON a.comment_pk=cm.id
+                WHERE {_ai_where()}
+                ORDER BY (cm.matched IS NOT NULL AND cm.matched!='') DESC,
+                         cm.posted_at DESC
+                LIMIT ?""", (limit + len(taken),)).fetchall()
+        out = []
+        for r in rows:
+            if r["comment_pk"] in taken:
+                continue
+            d = dict(r)
+            d["post_caption"] = (d.get("post_caption") or "")[:800]
+            out.append(d)
+            _LEASE[d["comment_pk"]] = (agent, now + LEASE_SEC)
+            if len(out) >= limit:
+                break
     return out
 
 
@@ -633,6 +653,11 @@ def ai_save(payload):
             pk = int(r.get("comment_pk"))
         except (TypeError, ValueError):
             continue
+        _LEASE.pop(pk, None)
+        ag = str(payload.get("agent") or "agent")[:40]
+        AGENTS.setdefault(ag, {"done": 0})
+        AGENTS[ag]["done"] = AGENTS[ag].get("done", 0) + 1
+        AGENTS[ag]["model"] = model
         level = (r.get("level") or "none").strip().lower()
         if level not in ("urgent", "watch", "none", "skip"):
             level = "none"
@@ -752,7 +777,8 @@ def ai_status():
     seen = db.get_setting("ai_agent_seen", "") or ""
     with db._conn() as c:
         lv = dict(c.execute("SELECT level, COUNT(*) FROM comment_ai GROUP BY level").fetchall())
-    return {"pending": ai_pending_count(), "levels": lv, "agent_seen": seen}
+    return {"pending": ai_pending_count(), "levels": lv, "agent_seen": seen,
+            "agents": AGENTS}
 
 
 # ───────────────────────────── batch + loop ─────────────────────────────

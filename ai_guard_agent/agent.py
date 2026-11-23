@@ -23,6 +23,7 @@ import unicodedata
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,10 +51,20 @@ IDLE_SEC = int(os.environ.get("AI_IDLE_SEC", "60"))
 # Same num_ctx as sogov-deep (gemma4:12b, 24576): a different value makes
 # Ollama reload the model every time the two jobs alternate.
 NUM_CTX = int(os.environ.get("AI_NUM_CTX", "24576"))
+# Several machines can read the queue; the server leases each comment to one.
+AGENT_NAME = os.environ.get("AI_AGENT_NAME") or __import__("socket").gethostname()
+# "both" = posts first, comments when idle (sanmini) · "comments" = comments only (sanpc)
+MODE = os.environ.get("AI_MODE", "both")
+LOG_FILE = os.environ.get("AI_LOG_FILE", "")
 
 
 def log(*a):
-    print(time.strftime("%Y-%m-%d %H:%M:%S"), *a, flush=True)
+    line = time.strftime("%Y-%m-%d %H:%M:%S") + " " + " ".join(str(x) for x in a)
+    if LOG_FILE:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    else:
+        print(line, flush=True)
 
 
 def kw(method, path, body=None, timeout=60):
@@ -327,10 +338,15 @@ def review_comment(c, policy, known):
     s, u = prompt.build_comment(policy, known, c2)
     v = llm(s, u, prompt.SCHEMA)
     hay = _norm(text + " " + " ".join(f for _, f in links))
+    raw = (text + " " + " ".join(f for _, f in links)).lower()
     named = [x for x in (v.get("competitors") or [])
              if str(x).strip() and str(x).strip().lower() not in ("none", "-", "n/a")
              and not _is_client(x)]
-    v["competitors"] = [x for x in named if _grounded(x, hay)]
+    # short brands (Pi, KGI) must stand as a word: "แอป Pi" yes, "api" no
+    word = lambda x: any(re.search(r"(?<![a-z0-9])" + re.escape(w.lower()) + r"(?![a-z0-9])", raw)
+                         for w in re.split(r"[\s/()+,]+", str(x)) if len(w) >= 2
+                         and w.lower() not in ("app", "แอป", "บล.", "securities"))
+    v["competitors"] = [x for x in named if _grounded(x, hay) or word(x)]
     v["evidence"] = _quote(v.get("evidence"), text, v["competitors"])
     lvl = v.get("level") or "none"
     if lvl == "urgent" and not v["competitors"]:
@@ -358,7 +374,7 @@ def do_comments():
     """Read KOL-written comments while the post queue is empty. Returns True
     if it did any work (so the loop checks posts again right away)."""
     try:
-        d = kw("GET", f"/api/ai/comments_pending?limit={BATCH}")
+        d = kw("GET", f"/api/ai/comments_pending?limit={BATCH}&agent={urllib.parse.quote(AGENT_NAME)}")
     except Exception as e:
         log("comment pending fetch failed:", str(e)[:200])
         return False
@@ -380,7 +396,8 @@ def do_comments():
                  "evidence": ""}
         v["comment_pk"] = c["comment_pk"]
         try:
-            r = kw("POST", "/api/ai/comment_review", {"model": MODEL, "results": [v]})
+            r = kw("POST", "/api/ai/comment_review", {"model": MODEL, "agent": AGENT_NAME,
+                                                      "results": [v]})
         except Exception as e:
             log("comment save failed", c["comment_pk"], str(e)[:200])
             time.sleep(10)
@@ -394,8 +411,12 @@ def do_comments():
 def main():
     if not KEY:
         sys.exit("KOLWATCH_KEY missing (.env)")
-    log(f"kol-ai-guard up · {BASE} · model {MODEL}")
+    log(f"kol-ai-guard up · {BASE} · model {MODEL} · {AGENT_NAME} · mode {MODE}")
     while True:
+        if MODE == "comments":
+            if not do_comments():
+                time.sleep(IDLE_SEC)
+            continue
         try:
             d = kw("GET", f"/api/ai/pending?limit={BATCH}")
         except Exception as e:
