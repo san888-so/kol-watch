@@ -860,6 +860,7 @@ def _work_platform(platform, stop):
             if room is not None and room < reserve_usd():
                 STATE["current"][platform] = (
                     f"รอเครดิต Apify (เหลือ ${room:.0f} · กันไว้ให้สแกนโพสต์ ${reserve_usd():.0f})")
+                _credit_wait(True, room)
                 return
         with _lock:   # claim under a lock so two workers never take the same posts
             posts = due_posts(platform, BATCH[platform])
@@ -877,10 +878,11 @@ def _work_platform(platform, stop):
             if platform == "youtube":   # free quota resets daily; others carry on
                 STATE["current"][platform] = "โควตา YouTube วันนี้หมด ต่อพรุ่งนี้"
                 return
+            # Out of Apify credit: stop this round but stay switched on — the
+            # 15-minute loop retries, so raising the limit is all it takes.
             STATE["paused_reason"] = f"{platform}: {e}"[:300]
-            db.set_setting("comments_enabled", "0")
-            db.set_setting("comments_paused_reason", STATE["paused_reason"])
-            _notify_pause(STATE["paused_reason"])
+            STATE["current"][platform] = "เครดิต Apify หมด รอเติม/เพิ่มลิมิต"
+            _credit_wait(True, apify_headroom())
             return
         except Exception as e:
             STATE["last_error"] = f"{platform}: {e}"[:300]
@@ -888,10 +890,24 @@ def _work_platform(platform, stop):
             time.sleep(30)
 
 
-def _notify_pause(reason):
+def _credit_wait(waiting, room=None):
+    """LINE the team once when comment pulling starts waiting for Apify
+    credit, and once when it carries on again."""
+    was = _s("comments_waiting_credit", "0") == "1"
+    if waiting == was:
+        return
+    db.set_setting("comments_waiting_credit", "1" if waiting else "0")
+    db.set_setting("comments_paused_reason", "รอเครดิต Apify" if waiting else "")
+    left = sum(due_count(p) for p in platforms() if p in BATCH and p != "youtube")
+    if waiting:
+        msg = (f"⏸ ดึงคอมเมนต์ KOL พักรอเครดิต Apify (เหลือ ${room or 0:.0f})\n"
+               f"ค้างอีก {left:,} โพสต์ · เพิ่มลิมิต/เติมเงินที่ Apify แล้วระบบดึงต่อเองภายใน 15 นาที")
+    else:
+        msg = (f"▶️ ดึงคอมเมนต์ KOL ต่อแล้ว (เครดิต Apify เหลือ ${room or 0:.0f})\n"
+               f"ค้างอีก {left:,} โพสต์")
     try:
         import notify_line
-        notify_line.send_texts([f"⏸ ดึงคอมเมนต์หยุดชั่วคราว: เครดิต Apify ไม่พอ\n{reason[:200]}"])
+        notify_line.send_texts([msg])
     except Exception:
         traceback.print_exc()
 
@@ -940,6 +956,10 @@ def worker_thread(stop):
         try:
             if enabled():
                 STATE["paused_reason"] = ""
+                if _s("comments_waiting_credit", "0") == "1":
+                    room = apify_headroom()
+                    if room is None or room >= reserve_usd():
+                        _credit_wait(False, room)   # limit raised -> carry on
                 ensure_workers(stop)
         except Exception:
             traceback.print_exc()
