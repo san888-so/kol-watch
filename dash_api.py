@@ -204,6 +204,7 @@ def run_detail(run_id):
             SELECT id, kol_name, platform, post_url, posted_at, matched_keyword,
                    snippet, detected_at, handle_status, kind
             FROM hit WHERE detected_at >= ? AND detected_at <= ?
+              AND kind != 'comment'
             ORDER BY detected_at DESC LIMIT 1000""", (lo, hi))]
     for p in posts:
         p["excl"] = _is_excl(p.pop("exclusivity"))

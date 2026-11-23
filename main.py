@@ -17,6 +17,7 @@ import registry
 import scheduler
 import ai_review
 import takedown
+import comments
 import notify_line
 import dash_api
 import hr_auth
@@ -487,6 +488,9 @@ API_DOCS = {
         "/api/posts_q?q=&platform=&excl=excl|non&kol=&flag=hit|brand|urgent|watch&from=&to=&sort=&page=&size=": "search the post database",
         "/api/post?id=": "one post with its hits and AI verdict",
         "/api/takedowns": "links the team asked KOLs to delete/edit + real check (gone / live / edited)",
+        "/api/comments/status": "comment pulling: per-platform done/left/cost, today's spend, cap",
+        "/api/comments?who=kol|all&hit=1&kol=&platform=&text=&post=&page=": "search stored comments",
+        "/api/comments/hits?status=new|follower": "comments that name a competitor",
         "/api/posts": "every scanned post (JSON)",
         "/api/posts.csv": "every scanned post (CSV, opens in Excel/Sheets)",
         "/api/export": "every table in the database (JSON, LINE token removed)",
@@ -504,6 +508,7 @@ API_DOCS = {
         "/api/hit_status": "mark a hit handled {id, status}",
         "/api/takedowns": "upsert takedown links {items:[{url, kol, platform, brand, action, sheet_status, ...}]}",
         "/api/takedowns/recheck": "re-check notified takedown links now (free, no Apify) {ids?}",
+        "/api/comments/config": "comment pulling on/off + settings {comments_enabled, comments_platforms, comments_daily_usd, comments_scope, comments_from}",
         "/api/dca_report_test": "send the daily report to LINE NOW (broadcasts!)",
         "/api/ai/review": "(agent) save AI verdicts {model, results:[{seen_post_id, level, competitors, ...}]}",
     },
@@ -527,6 +532,9 @@ DASH_GET = {
     "/api/posts_q": lambda q: dash_api.posts_query(q),
     "/api/post": lambda q: dash_api.post_detail(int(_q1(q, "id", "0") or 0)),
     "/api/takedowns": lambda q: takedown.listing(),
+    "/api/comments/status": lambda q: comments.status(),
+    "/api/comments": lambda q: comments.listing(q),
+    "/api/comments/hits": lambda q: {"hits": comments.hits(_q1(q, "status", "") or None)},
 }
 
 
@@ -808,6 +816,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = takedown.upsert(payload.get("items") or []), 200
             elif path == "/api/takedowns/recheck":
                 r, c = takedown.recheck_async(ids=payload.get("ids")), 200
+            elif path == "/api/comments/config":
+                r, c = comments.configure(payload), 200
             else:
                 r, c = {"error": "not found"}, 404
             self._json(c, r)
@@ -828,6 +838,9 @@ def main():
                      daemon=True).start()
     takedown.init()
     threading.Thread(target=takedown.scheduler_thread, args=(stop,),
+                     daemon=True).start()
+    comments.init()
+    threading.Thread(target=comments.worker_thread, args=(stop,),
                      daemon=True).start()
     # Local default 127.0.0.1; on a hosted env (Railway sets PORT) bind
     # 0.0.0.0 so the platform's router can reach us. Override via env.

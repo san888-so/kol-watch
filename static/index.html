@@ -333,6 +333,7 @@ const chips = (s, cls = 'k') => (s || '').split(',').filter(Boolean).map(k => `<
 const aiTag = l => l === 'urgent' ? '<span class="st hot">AI ด่วน</span>' : l === 'watch' ? '<span class="st wait">AI เฝ้าระวัง</span>' : '';
 function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('on'), 2600); }
 const ICON = {
+  cmt:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
   home:'<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/>',
   alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
   ai:'<rect x="5" y="7" width="14" height="12" rx="3"/><path d="M12 3v4M9 12v1M15 12v1M9 16h6"/>',
@@ -351,6 +352,7 @@ const NAV = [
     {id:'home', th:'หน้าแรก', en:'Overview', ic:'home'},
     {id:'hits', th:'เจอคำคู่แข่ง', en:'Competitor Hits', ic:'alert', badge:'open_hits'},
     {id:'ai', th:'AI ตรวจโพสต์', en:'AI Review', ic:'ai'},
+    {id:'comments', th:'คอมเมนต์ใต้โพสต์', en:'Comments', ic:'cmt', badge:'cmt_hits'},
     {id:'brand', th:'โพสต์ที่พูดถึง Webull', en:'Client Mentions', ic:'brand'},
     {id:'takedown', th:'ติดตามการลบ', en:'Takedowns', ic:'trash', badge:'td_live'},
   ]},
@@ -944,6 +946,50 @@ async function vAi(){
   V().querySelectorAll('#aif button').forEach(b => b.onclick = () => { AIL = b.dataset.l; vAi(); });
   V().querySelectorAll('tr[data-post]').forEach(tr => tr.onclick = () => showPost(tr.dataset.post));
 }
+/* ═══════════════════════════ COMMENTS ═══════════════════════════ */
+let CMW = 'new';
+async function vComments(){
+  const [st, hs] = await Promise.all([J('/api/comments/status'), J('/api/comments/hits?status=' + CMW)]);
+  const hits = hs.hits || [];
+  BADGE.cmt_hits = st.kol_hits; renderNav();
+  const plats = st.platforms;
+  const tot = plats.reduce((a, p) => ({done: a.done + p.done, left: a.left + p.left, usd: a.usd + p.usd, est: a.est + p.est_left_usd}), {done:0, left:0, usd:0, est:0});
+  V().innerHTML = head('คอมเมนต์ใต้โพสต์', `ดึงคอมเมนต์ทุกโพสต์ของ KOL ${st.scope === 'all' ? 'ทุกคน' : 'Exclusive'} ตั้งแต่ ${esc(st.from)} · ตรวจคำคู่แข่งทุกคอมเมนต์ · KOL ตอบเองแล้วพูดถึงคู่แข่ง = เด้ง LINE (เฉพาะคอมเมนต์ใหม่ 3 วัน)`) + `
+  ${st.paused_reason ? `<div class="note bad">หยุดชั่วคราว: ${esc(st.paused_reason)}</div>` : ''}
+  <div class="tiles">
+    <div class="tile ${st.enabled ? 'ok' : ''}"><div class="lab">สถานะ</div><div class="num" style="font-size:20px">${st.running ? 'กำลังดึง' : st.enabled ? 'เปิดอยู่' : 'ปิด'}</div><div class="sub">ดูคิวทุก 15 นาที · ดึงตอนโพสต์อายุ 2 วัน + 7 วัน</div></div>
+    <div class="tile"><div class="lab">ใช้เงินวันนี้</div><div class="num">$${st.spent_today.toFixed(2)}</div><div class="sub">เพดาน $${st.daily_cap}/วัน · รวมทั้งหมด $${tot.usd.toFixed(2)}</div></div>
+    <div class="tile"><div class="lab">โพสต์ ดึงแล้ว / เหลือ</div><div class="num">${num(tot.done)} / ${num(tot.left)}</div><div class="sub">ประเมินที่เหลือราว $${num(Math.round(tot.est))}</div></div>
+    <div class="tile"><div class="lab">คอมเมนต์ที่เก็บ</div><div class="num">${num(st.total_comments)}</div><div class="sub">KOL ตอบเอง ${num(st.kol_comments)}</div></div>
+    <div class="tile ${st.kol_hits ? 'alert' : ''}"><div class="lab">KOL ตอบเอง + คำคู่แข่ง</div><div class="num">${num(st.kol_hits)}</div><div class="sub">ผู้ติดตามพูดถึง ${num(st.follower_hits)}</div></div>
+  </div>
+  <div class="card"><div class="hd"><div><h3>ความคืบหน้าแยกแพลตฟอร์ม</h3></div>
+    <div class="bar" style="margin:0"><label class="small muted" for="cmCap">เพดาน $/วัน</label><input id="cmCap" style="width:80px" value="${st.daily_cap}">
+    <button class="btn sm ${st.enabled ? 'ghost' : ''}" id="cmToggle">${st.enabled ? 'หยุดดึง' : 'เริ่มดึง'}</button></div></div>
+    <div class="tblwrap"><table><thead><tr><th>แพลตฟอร์ม</th><th class="num">ดึงแล้ว</th><th class="num">เหลือ</th><th>ความคืบหน้า</th><th class="num">คอมเมนต์</th><th class="num">ใช้ไป</th><th class="num">ประเมินที่เหลือ</th><th>ตอนนี้</th></tr></thead><tbody>
+    ${plats.map(p => { const all = p.done + p.left; const pct = all ? p.done / all * 100 : 0; return `<tr><td class="nw">${pf(p.platform)}</td>
+      <td class="num">${num(p.done)}${p.errors ? `<div class="faint small">ผิดพลาด ${num(p.errors)}</div>` : ''}</td><td class="num">${p.on ? num(p.left) : '—'}</td>
+      <td style="min-width:120px">${p.on ? `<div class="prog"><i style="width:${pct}%"></i></div><span class="faint small">${pct.toFixed(0)}%</span>` : `<span class="faint small">${p.platform === 'x' ? 'ปิด — ค้นหาของ X ล่มตั้งแต่ 21 พ.ย.' : 'ปิด'}</span>`}</td>
+      <td class="num">${num(p.comments)}</td><td class="num">$${p.usd.toFixed(2)}</td><td class="num">${p.platform === 'youtube' ? 'ฟรี' : '$' + num(p.est_left_usd)}</td><td class="small">${esc(p.now || '')}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    ${st.last_error ? `<p class="faint small">ล่าสุดผิดพลาด: ${esc(st.last_error)}</p>` : ''}</div>
+  <div class="card"><div class="bar"><div class="seg" id="cmw">${[['new', 'KOL ตอบเอง'], ['follower', 'ผู้ติดตามพูดถึง']].map(([k, l]) => `<button data-w="${k}" class="${CMW === k ? 'on' : ''}">${l}</button>`).join('')}</div><span class="muted small" style="margin-left:auto">${num(hits.length)} คอมเมนต์ที่มีคำคู่แข่ง</span></div>
+    ${hits.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำ</th><th>คอมเมนต์</th><th></th></tr></thead><tbody>
+    ${hits.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)} <span class="faint small">${fmtTH(h.posted_at)}</span></div></td>
+      <td><span class="chip k">${esc(h.matched_keyword)}</span></td><td><div class="cap">${esc(h.snippet)}</div></td>
+      <td><a class="link nw" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิดโพสต์ ↗</a></td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="empty">${CMW === 'new' ? 'ยังไม่เจอ KOL ตอบคอมเมนต์ที่พูดถึงคู่แข่ง' : 'ยังไม่เจอ'}</div>`}
+    <p class="faint small" style="margin-top:10px">“KOL ตอบเอง” = คนเขียนคอมเมนต์คือเจ้าของช่อง (เทียบชื่อบัญชี/ID) · ผู้ติดตามพูดถึงคู่แข่งไม่ถือว่า KOL ผิดสัญญา แสดงไว้ดูเท่านั้น</p></div>`;
+  V().querySelectorAll('#cmw button').forEach(b => b.onclick = () => { CMW = b.dataset.w; vComments(); });
+  $('#cmToggle').onclick = async () => {
+    const on = !st.enabled, cap = parseFloat($('#cmCap').value) || st.daily_cap;
+    if(on && !confirm(`เริ่มดึงคอมเมนต์? ใช้เครดิต Apify ไม่เกิน $${cap}/วัน`)) return;
+    await P('/api/comments/config', {comments_enabled: on ? '1' : '0', comments_daily_usd: String(cap)});
+    toast(on ? 'เริ่มดึงแล้ว' : 'หยุดแล้ว (รอบที่กำลังดึงจะจบก่อน)'); vComments();
+  };
+  $('#cmCap').onchange = async () => { await P('/api/comments/config', {comments_daily_usd: $('#cmCap').value}); toast('บันทึกเพดานแล้ว'); };
+}
+
 async function vBrand(){
   STATE = STATE || await J('/api/state');
   const bh = STATE.brand_hits || [], groups = {};
@@ -1021,7 +1067,7 @@ async function vSettings(){
 }
 
 /* ═══════════════════════════ router + status ═══════════════════════════ */
-const VIEWS = {home:vHome, hits:vHits, ai:vAi, brand:vBrand, takedown:vTakedown, log:vLog, keywords:vKeywords, channels:vChannels, counts:vCounts, blocked:vBlocked, db:vDb, settings:vSettings};
+const VIEWS = {home:vHome, hits:vHits, ai:vAi, comments:vComments, brand:vBrand, takedown:vTakedown, log:vLog, keywords:vKeywords, channels:vChannels, counts:vCounts, blocked:vBlocked, db:vDb, settings:vSettings};
 async function route(){
   const id = (location.hash.slice(1) || 'home').split('/')[0];
   VIEW = VIEWS[id] ? id : 'home'; renderNav(); setMenu(false); closeDrawer();
