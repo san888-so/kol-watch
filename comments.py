@@ -267,7 +267,8 @@ def _token():
 def _quota_text(t):
     t = (t or "").lower()
     return any(q in t for q in ("monthly usage", "hard limit", "usage limit",
-                                "platform-feature-disabled", "not enough"))
+                                "platform-feature-disabled", "not enough credit",
+                                "insufficient credit"))
 
 
 def _apify(actor, payload, cap_usd, timeout=3600):
@@ -316,13 +317,19 @@ def _iso_ts(v):
 
 def _fetch_apify(platform, posts):
     """Run one batch, return ({seen_post_id: [comment dicts]}, usd, errors)."""
+    # One link can belong to two posts (a collab post under two KOLs, or the
+    # same post saved twice) — Apify rejects duplicate links, so send each
+    # once and give its comments to every post that has it.
     by_url, urls = {}, []
     for p in posts:
         u = _threads_url(p) if platform == "threads" else p["post_url"]
         if not u:
             continue
-        by_url[_norm_url(platform, u)] = p
-        urls.append(u)
+        key = _norm_url(platform, u)
+        if key not in by_url:
+            by_url[key] = []
+            urls.append(u)
+        by_url[key].append(p)
     if not urls:
         return {}, 0.0, {}
     since = None
@@ -351,19 +358,17 @@ def _fetch_apify(platform, posts):
         src = (it.get("inputUrl") or it.get("input") or it.get("submittedVideoUrl")
                or it.get("source_post_url") or it.get("facebookUrl")
                or it.get("postUrl") or it.get("videoWebUrl") or it.get("url") or "")
-        p = by_url.get(_norm_url(platform, src))
-        if not p:
-            continue
-        if it.get("error"):
-            errors[p["seen_post_id"]] = str(it.get("errorDescription") or it.get("error"))
-            continue
-        c = _shape(platform, it, p)
-        if c:
-            out[p["seen_post_id"]].append(c)
-            for rep in (it.get("replies") or []) if platform == "instagram" else []:
-                rc = _shape(platform, rep, p, parent=c["comment_id"])
-                if rc:
-                    out[p["seen_post_id"]].append(rc)
+        for p in by_url.get(_norm_url(platform, src)) or []:
+            if it.get("error"):
+                errors[p["seen_post_id"]] = str(it.get("errorDescription") or it.get("error"))
+                continue
+            c = _shape(platform, it, p)   # per post: "is it the KOL" differs per owner
+            if c:
+                out[p["seen_post_id"]].append(c)
+                for rep in (it.get("replies") or []) if platform == "instagram" else []:
+                    rc = _shape(platform, rep, p, parent=c["comment_id"])
+                    if rc:
+                        out[p["seen_post_id"]].append(rc)
     return out, usd, errors
 
 
