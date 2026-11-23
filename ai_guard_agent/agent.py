@@ -370,9 +370,35 @@ def review_comment(c, policy, known):
     return v
 
 
+_LAST_VRAM_CHECK = [0.0]
+
+
+def _refit_gpu():
+    """The GPU may be shared (sanpc also runs other jobs). If our model got
+    loaded partly on the CPU while VRAM was busy, unload it every 20 min so
+    the next call reloads it fully on the GPU once the other job is done."""
+    if time.time() - _LAST_VRAM_CHECK[0] < 1200:
+        return
+    _LAST_VRAM_CHECK[0] = time.time()
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=10) as r:
+            ps = json.loads(r.read().decode("utf-8"))
+        for m in ps.get("models") or []:
+            if m.get("name", "").split(":")[0] == MODEL.split(":")[0] and \
+                    m.get("size_vram", 0) < m.get("size", 0) * 0.98:
+                body = json.dumps({"model": m["name"], "keep_alive": 0}).encode()
+                urllib.request.urlopen(urllib.request.Request(
+                    OLLAMA + "/api/generate", data=body,
+                    headers={"Content-Type": "application/json"}), timeout=60).read()
+                log(f"model {m['name']} was {100 - 100 * m.get('size_vram', 0) // max(1, m.get('size', 1))}% on CPU — unloaded to refit on GPU")
+    except Exception as e:
+        log("vram check failed:", str(e)[:120])
+
+
 def do_comments():
     """Read KOL-written comments while the post queue is empty. Returns True
     if it did any work (so the loop checks posts again right away)."""
+    _refit_gpu()
     try:
         d = kw("GET", f"/api/ai/comments_pending?limit={BATCH}&agent={urllib.parse.quote(AGENT_NAME)}")
     except Exception as e:
