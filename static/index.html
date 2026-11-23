@@ -961,7 +961,8 @@ async function vComments(){
     <div class="tile"><div class="lab">ใช้เงินวันนี้</div><div class="num">$${st.spent_today.toFixed(2)}</div><div class="sub">เพดาน $${st.daily_cap}/วัน · รวมทั้งหมด $${tot.usd.toFixed(2)}${st.apify_headroom != null ? `<br>เครดิต Apify เหลือ $${num(Math.round(st.apify_headroom))} (กันไว้ให้สแกนโพสต์ $${num(st.reserve)})` : ''}</div></div>
     <div class="tile"><div class="lab">โพสต์ ดึงแล้ว / เหลือ</div><div class="num">${num(tot.done)} / ${num(tot.left)}</div><div class="sub">ประเมินที่เหลือราว $${num(Math.round(tot.est))}</div></div>
     <div class="tile"><div class="lab">คอมเมนต์ที่เก็บ</div><div class="num">${num(st.total_comments)}</div><div class="sub">KOL ตอบเอง ${num(st.kol_comments)}</div></div>
-    <div class="tile ${st.kol_hits ? 'alert' : ''}"><div class="lab">KOL ตอบเอง + คำคู่แข่ง</div><div class="num">${num(st.kol_hits)}</div><div class="sub">ผู้ติดตามพูดถึง ${num(st.follower_hits)}</div></div>
+    <div class="tile ${st.kol_hits ? 'alert' : ''}"><div class="lab">KOL ตอบเอง + คำคู่แข่ง</div><div class="num">${num(st.kol_hits)}</div><div class="sub">AI ตัดออก ${num(st.ai_none)} · ผู้ติดตามพูดถึง ${num(st.follower_hits)}</div></div>
+    <div class="tile"><div class="lab">AI อ่านคอมเมนต์ KOL</div><div class="num">${num(st.ai.pending)}</div><div class="sub">รออ่าน · ด่วน ${num(st.ai.levels.urgent || 0)} · เฝ้าระวัง ${num(st.ai.levels.watch || 0)} · ไม่เกี่ยว ${num(st.ai.levels.none || 0)}</div></div>
   </div>
   <div class="card"><div class="hd"><div><h3>ความคืบหน้าแยกแพลตฟอร์ม</h3></div>
     <div class="bar" style="margin:0"><label class="small muted" for="cmCap">เพดาน $/วัน</label><input id="cmCap" style="width:80px" value="${st.daily_cap}">
@@ -973,13 +974,14 @@ async function vComments(){
       <td class="num">${num(p.comments)}</td><td class="num">$${p.usd.toFixed(2)}</td><td class="num">${p.platform === 'youtube' ? 'ฟรี' : '$' + num(p.est_left_usd)}</td><td class="small">${esc(p.now || '')}</td></tr>`; }).join('')}
     </tbody></table></div>
     ${st.last_error ? `<p class="faint small">ล่าสุดผิดพลาด: ${esc(st.last_error)}</p>` : ''}</div>
-  <div class="card"><div class="bar"><div class="seg" id="cmw">${[['new', 'KOL ตอบเอง'], ['follower', 'ผู้ติดตามพูดถึง']].map(([k, l]) => `<button data-w="${k}" class="${CMW === k ? 'on' : ''}">${l}</button>`).join('')}</div><span class="muted small" style="margin-left:auto">${num(hits.length)} คอมเมนต์ที่มีคำคู่แข่ง</span></div>
-    ${hits.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำ</th><th>คอมเมนต์</th><th></th></tr></thead><tbody>
+  <div class="card"><div class="bar"><div class="seg" id="cmw">${[['new', 'KOL ตอบเอง'], ['ai_none', 'AI ว่าไม่เกี่ยว'], ['follower', 'ผู้ติดตามพูดถึง']].map(([k, l]) => `<button data-w="${k}" class="${CMW === k ? 'on' : ''}">${l}</button>`).join('')}</div><span class="muted small" style="margin-left:auto">${num(hits.length)} คอมเมนต์ที่มีคำคู่แข่ง</span></div>
+    ${hits.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำ</th><th>คอมเมนต์</th><th>AI</th><th></th></tr></thead><tbody>
     ${hits.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div>${pf(h.platform)} <span class="faint small">${fmtTH(h.posted_at)}</span></div></td>
       <td><span class="chip k">${esc(h.matched_keyword)}</span></td><td><div class="cap">${esc(h.snippet)}</div></td>
+      <td class="small">${h.ai_level === 'urgent' ? '<span class="st hot">ด่วน</span>' : h.ai_level === 'watch' ? '<span class="st wait">เฝ้าระวัง</span>' : h.ai_level ? '<span class="faint">ไม่เกี่ยว</span>' : (CMW === 'follower' ? '' : '<span class="faint">รอ AI</span>')}${h.ai_why || h.ai_reason ? `<div class="faint small cap">${esc(h.ai_why || h.ai_reason)}</div>` : ''}</td>
       <td><a class="link nw" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิดโพสต์ ↗</a></td></tr>`).join('')}</tbody></table></div>`
       : `<div class="empty">${CMW === 'new' ? 'ยังไม่เจอ KOL ตอบคอมเมนต์ที่พูดถึงคู่แข่ง' : 'ยังไม่เจอ'}</div>`}
-    <p class="faint small" style="margin-top:10px">“KOL ตอบเอง” = คนเขียนคอมเมนต์คือเจ้าของช่อง (เทียบชื่อบัญชี/ID) · ผู้ติดตามพูดถึงคู่แข่งไม่ถือว่า KOL ผิดสัญญา แสดงไว้ดูเท่านั้น</p></div>`;
+    <p class="faint small" style="margin-top:10px">“KOL ตอบเอง” = คนเขียนคอมเมนต์คือเจ้าของช่อง (เทียบชื่อบัญชี/ID) · ผู้ติดตามพูดถึงคู่แข่งไม่ถือว่า KOL ผิดสัญญา แสดงไว้ดูเท่านั้น · AI บน sanmini อ่านคอมเมนต์ KOL ที่มีคำคู่แข่ง/ลิงก์/คำชวนสมัคร · LINE เด้งเมื่อ AI ว่าด่วน (ถ้า AI ไม่ตอบใน 2 ชม. ส่งแบบคำค้นแทน)</p></div>`;
   V().querySelectorAll('#cmw button').forEach(b => b.onclick = () => { CMW = b.dataset.w; vComments(); });
   $('#cmToggle').onclick = async () => {
     const on = !st.enabled, cap = parseFloat($('#cmCap').value) || st.daily_cap;

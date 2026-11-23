@@ -121,6 +121,7 @@ class QuotaError(RuntimeError):
 def init():
     with db._lock, db._conn() as c:
         c.executescript(SCHEMA)
+        c.executescript(AI_SCHEMA)
         # a deploy/restart mid-batch leaves rows 'running' — make them due again
         c.execute("UPDATE comment_fetch SET status='retry' WHERE status='running'")
 
@@ -547,28 +548,211 @@ def _save(post, comments, wl, unbranded_wl, alert_cutoff):
                 continue
             hits += 1
             recent = (r["posted_at"] or "") >= alert_cutoff
+            # A recent KOL comment stays notified=0: flush_alerts() sends it
+            # once the sanmini AI says "urgent" (or after 2 h with no verdict).
             with db._lock, db._conn() as c:
                 c.execute("UPDATE hit SET handle_status=?, notified=? WHERE id=?",
                           ("new" if r["is_kol"] else "follower",
                            0 if (r["is_kol"] and recent) else 1, hid))
-            if r["is_kol"] and recent:
-                _line_alert(post, r, f, hid)
     return len(new_rows), hits
 
 
-def _line_alert(post, r, f, hid):
-    try:
-        import notify_line
-        ok, _ = notify_line.send_texts([
-            f"💬 KOL ตอบคอมเมนต์พูดถึงคู่แข่ง\n"
-            f"KOL: {post['kol_name']} ({post['platform']})\n"
-            f"คำ: {f['keyword']}\n"
-            f"“{(r['text'] or '')[:300]}”\n"
-            f"โพสต์: {post['post_url']}"])
+# ───────────────────────────── AI (kol-ai-guard on sanmini) ───────────────
+# The agent reads only KOL-written comments that matter: ones with a
+# competitor word first, then ones with a link or sign-up wording (where an
+# unlisted brand would hide). Same text pasted again by the same KOL is
+# read once — the verdict is copied to the twins.
+
+AI_SCHEMA = """
+CREATE TABLE IF NOT EXISTS comment_ai (
+    comment_pk INTEGER PRIMARY KEY,
+    level TEXT NOT NULL,          -- urgent | watch | none | skip
+    competitors TEXT,
+    why TEXT,
+    reason TEXT,
+    evidence TEXT,
+    model TEXT,
+    reviewed_at TEXT NOT NULL,
+    copied_from INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_comment_ai_level ON comment_ai(level);
+"""
+_PROMO_SQL = ("cm.text LIKE '%http%' OR cm.text LIKE '%www.%' OR cm.text LIKE '%สมัคร%' "
+              "OR cm.text LIKE '%เปิดบัญชี%' OR cm.text LIKE '%เปิดพอร์ต%' "
+              "OR cm.text LIKE '%โค้ด%' OR cm.text LIKE '%ลิงก์%' OR cm.text LIKE '%ลิ้งค์%' "
+              "OR cm.text LIKE '%ลิงค์%' OR cm.text LIKE '%ลิ้งก์%'")
+ALERT_WAIT_MIN = 120
+
+
+def _ai_where():
+    return f"""cm.is_kol=1 AND a.comment_pk IS NULL
+        AND ((cm.matched IS NOT NULL AND cm.matched!='') OR {_PROMO_SQL})"""
+
+
+def ai_pending(limit):
+    with db._conn() as c:
+        rows = c.execute(f"""
+            SELECT cm.id comment_pk, cm.text, cm.matched, cm.posted_at, cm.pinned,
+                   cm.platform, k.name kol, sp.post_url, sp.caption post_caption
+            FROM comment cm
+            JOIN seen_post sp ON sp.id=cm.seen_post_id
+            JOIN channel ch ON ch.id=sp.channel_id JOIN kol k ON k.id=ch.kol_id
+            LEFT JOIN comment_ai a ON a.comment_pk=cm.id
+            WHERE {_ai_where()}
+            ORDER BY (cm.matched IS NOT NULL AND cm.matched!='') DESC,
+                     cm.posted_at DESC
+            LIMIT ?""", (max(1, min(int(limit or 5), 50)),)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["post_caption"] = (d.get("post_caption") or "")[:800]
+        out.append(d)
+    return out
+
+
+def ai_pending_count():
+    with db._conn() as c:
+        return c.execute(f"""SELECT COUNT(*) FROM comment cm
+            LEFT JOIN comment_ai a ON a.comment_pk=cm.id WHERE {_ai_where()}""").fetchone()[0]
+
+
+def _hits_of_comment(c, pk):
+    """Hit rows that point at this comment (hit.post_id = post_id#c<comment_id>)."""
+    return c.execute("""SELECT h.* FROM hit h JOIN comment cm ON cm.id=?
+        JOIN seen_post sp ON sp.id=cm.seen_post_id
+        WHERE h.kind='comment' AND h.channel_id=sp.channel_id
+          AND h.post_id = sp.post_id || '#c' || cm.comment_id""", (pk,)).fetchall()
+
+
+def ai_save(payload):
+    model = str(payload.get("model") or "")[:60]
+    now = datetime.now(timezone.utc).isoformat()
+    out = {"saved": 0, "copied": 0, "new_hits": 0}
+    for r in payload.get("results") or []:
+        try:
+            pk = int(r.get("comment_pk"))
+        except (TypeError, ValueError):
+            continue
+        level = (r.get("level") or "none").strip().lower()
+        if level not in ("urgent", "watch", "none", "skip"):
+            level = "none"
+        comps = [str(x).strip() for x in (r.get("competitors") or []) if str(x).strip()]
+        vals = (level, json.dumps(comps, ensure_ascii=False),
+                str(r.get("why") or "")[:200], str(r.get("reason") or "")[:500],
+                str(r.get("evidence") or "")[:300], model, now)
+        with db._lock, db._conn() as c:
+            cm = c.execute("""SELECT cm.*, sp.channel_id, sp.post_id, sp.post_url,
+                    sp.posted_at post_at, k.name kol FROM comment cm
+                JOIN seen_post sp ON sp.id=cm.seen_post_id
+                JOIN channel ch ON ch.id=sp.channel_id JOIN kol k ON k.id=ch.kol_id
+                WHERE cm.id=?""", (pk,)).fetchone()
+            if not cm:
+                continue
+            c.execute("""INSERT OR REPLACE INTO comment_ai(comment_pk,level,competitors,
+                why,reason,evidence,model,reviewed_at) VALUES(?,?,?,?,?,?,?,?)""",
+                      (pk,) + vals)
+            out["saved"] += 1
+            # same text, same KOL, not read yet -> same verdict
+            twins = c.execute("""SELECT cm.id FROM comment cm
+                LEFT JOIN comment_ai a ON a.comment_pk=cm.id
+                WHERE a.comment_pk IS NULL AND cm.is_kol=1 AND cm.author_id=?
+                  AND cm.text=? AND cm.id!=?""", (cm["author_id"], cm["text"], pk)).fetchall()
+            for t in twins:
+                c.execute("""INSERT OR IGNORE INTO comment_ai(comment_pk,level,competitors,
+                    why,reason,evidence,model,reviewed_at,copied_from)
+                    VALUES(?,?,?,?,?,?,?,?,?)""", (t["id"],) + vals + (pk,))
+            out["copied"] += len(twins)
+        for cpk in [pk] + [t["id"] for t in twins]:
+            out["new_hits"] += _apply_verdict(cpk, level, comps, r, copy=cpk != pk)
+    flush_alerts()
+    return out
+
+
+def _apply_verdict(pk, level, comps, r, copy=False):
+    """Keyword hit + AI 'none' -> hide it (status ai_none). AI 'urgent' on a
+    comment with no keyword hit (an unlisted brand) -> new hit."""
+    made = 0
+    with db._conn() as c:
+        hits = _hits_of_comment(c, pk)
+        cm = c.execute("""SELECT cm.*, sp.channel_id, sp.post_id, sp.post_url, k.name kol
+            FROM comment cm JOIN seen_post sp ON sp.id=cm.seen_post_id
+            JOIN channel ch ON ch.id=sp.channel_id JOIN kol k ON k.id=ch.kol_id
+            WHERE cm.id=?""", (pk,)).fetchone()
+    if not cm:
+        return 0
+    if copy:   # the same text pasted again: listed, but only the first one alerts
+        with db._lock, db._conn() as c:
+            for h in hits:
+                c.execute("UPDATE hit SET notified=1 WHERE id=?", (h["id"],))
+    if level in ("none", "skip"):
+        with db._lock, db._conn() as c:
+            for h in hits:
+                if h["handle_status"] == "new":
+                    c.execute("UPDATE hit SET handle_status='ai_none', notified=1 WHERE id=?",
+                              (h["id"],))
+    elif level == "urgent" and not hits:
+        label = ("AI: " + ", ".join(comps))[:120] if comps else "AI: หุ้นต่างประเทศ"
+        hid = db.add_hit(cm["channel_id"], cm["kol"], cm["platform"], cm["post_url"],
+                         f"{cm['post_id']}#c{cm['comment_id']}", cm["posted_at"], label,
+                         f"💬 [KOL ตอบเอง] {(r.get('evidence') or cm['text'] or '')[:300]}",
+                         kind="comment")
+        if hid:
+            made = 1
+            recent = (cm["posted_at"] or "") >= (
+                datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+            with db._lock, db._conn() as c:
+                c.execute("UPDATE hit SET handle_status='new', notified=? WHERE id=?",
+                          (0 if recent and not copy else 1, hid))
+    return made
+
+
+def flush_alerts():
+    """Send LINE for KOL comment hits waiting on the AI: 'urgent' -> send,
+    'watch'/'none' -> no LINE, no verdict after ALERT_WAIT_MIN -> send the
+    keyword alert anyway (AI down must not hide a breach)."""
+    wait_before = (datetime.now(timezone.utc) - timedelta(minutes=ALERT_WAIT_MIN)).isoformat()
+    with db._conn() as c:
+        rows = [dict(r) for r in c.execute("""
+            SELECT h.*, cm.text, cm.pinned, a.level ai_level, a.why ai_why
+            FROM hit h
+            JOIN seen_post sp ON sp.channel_id=h.channel_id
+                 AND sp.post_id = substr(h.post_id, 1, instr(h.post_id, '#c') - 1)
+            JOIN comment cm ON cm.seen_post_id=sp.id
+                 AND h.post_id = sp.post_id || '#c' || cm.comment_id
+            LEFT JOIN comment_ai a ON a.comment_pk=cm.id
+            WHERE h.kind='comment' AND h.notified=0 AND h.handle_status='new'""")]
+    by_post = {}
+    for h in rows:
+        if h["ai_level"] in ("watch", "none", "skip"):
+            db.mark_notified(h["id"])
+            continue
+        if h["ai_level"] != "urgent" and h["detected_at"] > wait_before:
+            continue   # still waiting for the AI
+        by_post.setdefault(h["post_id"], []).append(h)
+    for hs in by_post.values():
+        h = hs[0]
+        words = ", ".join(dict.fromkeys(x["matched_keyword"] for x in hs))
+        head = ("🔴 KOL ตอบคอมเมนต์โปรโมตคู่แข่ง (AI ยืนยัน)" if h["ai_level"] == "urgent"
+                else "💬 KOL ตอบคอมเมนต์พูดถึงคู่แข่ง (AI ยังไม่ได้อ่าน)")
+        txt = (f"{head}\nKOL: {h['kol_name']} ({h['platform']})\nคำ: {words}\n"
+               + (f"AI: {h['ai_why']}\n" if h.get("ai_why") else "")
+               + f"“{(h['text'] or '')[:300]}”\nโพสต์: {h['post_url']}")
+        try:
+            import notify_line
+            ok, _ = notify_line.send_texts([txt])
+        except Exception:
+            traceback.print_exc()
+            ok = False
         if ok:
-            db.mark_notified(hid)
-    except Exception:
-        traceback.print_exc()
+            for x in hs:
+                db.mark_notified(x["id"])
+
+
+def ai_status():
+    seen = db.get_setting("ai_agent_seen", "") or ""
+    with db._conn() as c:
+        lv = dict(c.execute("SELECT level, COUNT(*) FROM comment_ai GROUP BY level").fetchall())
+    return {"pending": ai_pending_count(), "levels": lv, "agent_seen": seen}
 
 
 # ───────────────────────────── batch + loop ─────────────────────────────
@@ -733,6 +917,10 @@ def worker_thread(stop):
                 ensure_workers(stop)
         except Exception:
             traceback.print_exc()
+        try:
+            flush_alerts()   # KOL comment alerts whose AI wait is over
+        except Exception:
+            traceback.print_exc()
         stop.wait(900)   # new posts become due over time — look again in 15 min
 
 
@@ -756,7 +944,8 @@ def status():
             FROM comment_spend GROUP BY platform""")}
         tot = c.execute("""SELECT COUNT(*) n, SUM(is_kol) kol,
             SUM(matched IS NOT NULL AND matched!='') matched FROM comment""").fetchone()
-        hits = c.execute("""SELECT SUM(handle_status!='follower') kol_hits,
+        hits = c.execute("""SELECT SUM(handle_status NOT IN ('follower','ai_none')) kol_hits,
+            SUM(handle_status='ai_none') ai_none,
             SUM(handle_status='follower') follower_hits FROM hit WHERE kind='comment'""").fetchone()
     plats = []
     for p in ["youtube", "instagram", "tiktok", "threads", "facebook", "x"]:
@@ -777,7 +966,8 @@ def status():
             "apify_headroom": apify_headroom(), "reserve": reserve_usd(),
             "total_comments": tot["n"] or 0, "kol_comments": tot["kol"] or 0,
             "matched_comments": tot["matched"] or 0,
-            "kol_hits": hits["kol_hits"] or 0, "follower_hits": hits["follower_hits"] or 0}
+            "kol_hits": hits["kol_hits"] or 0, "follower_hits": hits["follower_hits"] or 0,
+            "ai_none": hits["ai_none"] or 0, "ai": ai_status()}
 
 
 def listing(q):
@@ -811,11 +1001,19 @@ def listing(q):
 
 def hits(status=None):
     with db._conn() as c:
-        q = "SELECT * FROM hit WHERE kind='comment'"
+        q = """SELECT h.*, cm.text comment_text, a.level ai_level, a.why ai_why,
+                   a.reason ai_reason
+            FROM hit h
+            LEFT JOIN seen_post sp ON sp.channel_id=h.channel_id
+                 AND sp.post_id = substr(h.post_id, 1, instr(h.post_id, '#c') - 1)
+            LEFT JOIN comment cm ON cm.seen_post_id=sp.id
+                 AND h.post_id = sp.post_id || '#c' || cm.comment_id
+            LEFT JOIN comment_ai a ON a.comment_pk=cm.id
+            WHERE h.kind='comment'"""
         a = []
         if status:
-            q += " AND handle_status=?"; a.append(status)
-        q += " ORDER BY posted_at DESC LIMIT 1000"
+            q += " AND h.handle_status=?"; a.append(status)
+        q += " ORDER BY h.posted_at DESC LIMIT 1000"
         return [dict(r) for r in c.execute(q, a)]
 
 

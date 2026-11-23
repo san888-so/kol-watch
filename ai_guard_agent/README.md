@@ -12,3 +12,11 @@ not on the keyword watchlist — or teaches foreign-stock trading outside Webull
 
 On sanmini: `~/kol-ai-guard/` (`.env` holds KOLWATCH_KEY), launchd label `com.so.kol-ai-guard`,
 log `~/kol-ai-guard/logs/agent.log`. This folder is a copy for reference; deploy with scp.
+
+## Comments (24 Nov 2026)
+When no post is waiting, the agent reads comments the KOL wrote under their own posts:
+`GET /api/ai/comments_pending` → `review_comment()` (prompt `build_comment`, same grounding +
+second-look rules as posts) → `POST /api/ai/comment_review`. Only KOL-written comments with a
+competitor word, a link or sign-up wording are queued; the same text pasted again is read once.
+A KOL comment hit waits for this verdict before LINE: urgent → LINE, watch/none → no LINE,
+no verdict in 2 h → the keyword alert is sent anyway.

@@ -490,7 +490,8 @@ API_DOCS = {
         "/api/takedowns": "links the team asked KOLs to delete/edit + real check (gone / live / edited)",
         "/api/comments/status": "comment pulling: per-platform done/left/cost, today's spend, cap",
         "/api/comments?who=kol|all&hit=1&kol=&platform=&text=&post=&page=": "search stored comments",
-        "/api/comments/hits?status=new|follower": "comments that name a competitor",
+        "/api/comments/hits?status=new|follower|ai_none": "comments that name a competitor (+ AI verdict)",
+        "/api/ai/comments_pending?limit=5": "(agent) next KOL-written comments for the AI to read",
         "/api/posts": "every scanned post (JSON)",
         "/api/posts.csv": "every scanned post (CSV, opens in Excel/Sheets)",
         "/api/export": "every table in the database (JSON, LINE token removed)",
@@ -516,6 +517,18 @@ API_DOCS = {
 
 
 _q1 = lambda q, k, d="": (q.get(k) or [d])[0]
+
+
+def _ai_comments_pending(q):
+    """Same agent heartbeat as /api/ai/pending, plus the comment queue."""
+    import matcher
+    db.set_setting("ai_agent_seen", __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc).isoformat())
+    return {"enabled": (db.get_setting("ai_review_enabled", "1") or "1") == "1",
+            "pending_total": comments.ai_pending_count(),
+            "policy": db.get_setting("ai_review_policy", "") or "",
+            "known_competitors": list(matcher.get_watchlist().keys()),
+            "comments": comments.ai_pending(int(_q1(q, "limit", "5") or 5))}
 DASH_GET = {
     "/api/overview": lambda q: dash_api.overview(),
     "/api/progress": lambda q: {"progress": scheduler.PROGRESS,
@@ -535,6 +548,7 @@ DASH_GET = {
     "/api/comments/status": lambda q: comments.status(),
     "/api/comments": lambda q: comments.listing(q),
     "/api/comments/hits": lambda q: {"hits": comments.hits(_q1(q, "status", "") or None)},
+    "/api/ai/comments_pending": lambda q: _ai_comments_pending(q),
 }
 
 
@@ -818,6 +832,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = takedown.recheck_async(ids=payload.get("ids")), 200
             elif path == "/api/comments/config":
                 r, c = comments.configure(payload), 200
+            elif path == "/api/ai/comment_review":
+                r, c = comments.ai_save(payload), 200
             else:
                 r, c = {"error": "not found"}, 404
             self._json(c, r)

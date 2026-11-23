@@ -313,6 +313,84 @@ def review(post, policy, known):
     return v
 
 
+def review_comment(c, policy, known):
+    """A comment the KOL wrote under their own post. Same guards as posts:
+    a competitor must really be named in the comment (or behind its short
+    link), urgent gets a second stricter look."""
+    text = (c.get("text") or "").strip()
+    if len(text) < 2:
+        return {"level": "none", "competitors": [], "reason": "คอมเมนต์ว่าง", "evidence": ""}
+    links = _expand_links(text)
+    c2 = dict(c)
+    if links:
+        c2["text"] = text + "\n[ลิงก์ย่อในคอมเมนต์พาไปที่: " + ", ".join(f for _, f in links) + "]"
+    s, u = prompt.build_comment(policy, known, c2)
+    v = llm(s, u, prompt.SCHEMA)
+    hay = _norm(text + " " + " ".join(f for _, f in links))
+    named = [x for x in (v.get("competitors") or [])
+             if str(x).strip() and str(x).strip().lower() not in ("none", "-", "n/a")
+             and not _is_client(x)]
+    v["competitors"] = [x for x in named if _grounded(x, hay)]
+    v["evidence"] = _quote(v.get("evidence"), text, v["competitors"])
+    lvl = v.get("level") or "none"
+    if lvl == "urgent" and not v["competitors"]:
+        lvl = "watch" if v.get("foreign_stock_trading") else "none"
+    if lvl == "watch" and not v["competitors"] and not v.get("foreign_stock_trading"):
+        lvl = "none"
+    if lvl != "none" and not v["competitors"] and _CLIENT.search(text):
+        lvl = "none"
+    if lvl == "urgent":
+        cs, cu = prompt.build_confirm({"kol": c.get("kol"), "platform": c.get("platform"),
+                                       "caption": "[คอมเมนต์ที่ KOL เขียนเองใต้โพสต์]\n" + text}, v)
+        cf = llm(cs, cu, prompt.CONFIRM_SCHEMA)
+        if not cf.get("confirm"):
+            lvl = "watch"
+            v["reason"] = (v.get("reason") or "") + " · (รอบสองไม่ยืนยัน: " + (cf.get("reason") or "") + ")"
+    v["level"] = lvl
+    why = (v.get("why_short") or "").strip()
+    if len(why) > 90:
+        why = why[:90].rsplit(" ", 1)[0] + "…"
+    v["why"] = why[:200]
+    return v
+
+
+def do_comments():
+    """Read KOL-written comments while the post queue is empty. Returns True
+    if it did any work (so the loop checks posts again right away)."""
+    try:
+        d = kw("GET", f"/api/ai/comments_pending?limit={BATCH}")
+    except Exception as e:
+        log("comment pending fetch failed:", str(e)[:200])
+        return False
+    items = d.get("comments") or []
+    if not d.get("enabled") or not items:
+        return False
+    policy, known = d.get("policy") or "", d.get("known_competitors") or []
+    for c in items:
+        t = time.time()
+        try:
+            v = review_comment(c, policy, known)
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            log("LLM unreachable, retry later:", str(e)[:200])
+            time.sleep(IDLE_SEC)
+            return False
+        except Exception as e:
+            log("comment review failed", c["comment_pk"], str(e)[:200])
+            v = {"level": "skip", "competitors": [], "reason": "AI อ่านไม่สำเร็จ: " + str(e)[:120],
+                 "evidence": ""}
+        v["comment_pk"] = c["comment_pk"]
+        try:
+            r = kw("POST", "/api/ai/comment_review", {"model": MODEL, "results": [v]})
+        except Exception as e:
+            log("comment save failed", c["comment_pk"], str(e)[:200])
+            time.sleep(10)
+            continue
+        log(f"💬{c['comment_pk']} {v['level']:6} {time.time()-t:5.1f}s "
+            f"{c.get('kol','')[:28]} {v.get('competitors')} "
+            f"{'+' + str(r.get('copied')) + ' ซ้ำ' if r.get('copied') else ''} · left {d.get('pending_total')}")
+    return True
+
+
 def main():
     if not KEY:
         sys.exit("KOLWATCH_KEY missing (.env)")
@@ -326,7 +404,9 @@ def main():
             continue
         posts = d.get("posts") or []
         if not d.get("enabled") or not posts:
-            time.sleep(IDLE_SEC)
+            # posts come first; comments only while no post is waiting
+            if not do_comments():
+                time.sleep(IDLE_SEC)
             continue
         policy, known = d.get("policy") or "", d.get("known_competitors") or []
         for p in posts:

@@ -59,6 +59,26 @@ def build(policy, known_competitors, post):
     return sys, user
 
 
+def build_comment(policy, known_competitors, c):
+    """A comment the KOL wrote under their own post (reply to a follower,
+    pinned comment, a link dropped under the clip)."""
+    sys = (policy or DEFAULT_POLICY) + \
+        "\n\nสิ่งที่ต้องอ่านคือ \"คอมเมนต์ที่ KOL เขียนเอง\" ใต้โพสต์ของตัวเอง (ตอบผู้ติดตาม/ปักหมุด/แปะลิงก์) " \
+        "ไม่ใช่ตัวโพสต์ — ตัดสินจากคอมเมนต์เป็นหลัก ใช้โพสต์เป็นบริบทเท่านั้น\n" \
+        "- urgent = ในคอมเมนต์ KOL แนะนำ/ตอบว่าใช้/ให้ลิงก์/รหัสแนะนำ/ชวนสมัครหรือเปิดบัญชีกับคู่แข่ง " \
+        "(เช่น ผู้ติดตามถามว่าใช้แอปอะไร แล้วตอบชื่อคู่แข่ง)\n" \
+        "- watch = เอ่ยชื่อคู่แข่งแบบไม่ได้โปรโมต เช่น เปรียบเทียบแล้วแนะนำ Webull, อ้างอิงบทวิเคราะห์/ข่าวของโบรก\n" \
+        "- none = ไม่เกี่ยวกับคู่แข่ง หรือลิงก์ที่ไม่ใช่การลงทุน (ร้านค้า คอร์สของตัวเอง ช่องอื่นของตัวเอง) หรือโปรโมต Webull\n" \
+        "\nรายชื่อคู่แข่งที่รู้แล้ว (ไม่ครบ ต้องจับเจ้าใหม่ด้วย): " + ", ".join(known_competitors) + \
+        "\n\nตอบเป็น JSON ตาม schema เท่านั้น · competitors ใส่เฉพาะชื่อที่อยู่ในคอมเมนต์จริง ว่าง [] ถ้าไม่มี · " \
+        "reason และ evidence ภาษาไทย · evidence คัดจากคอมเมนต์ตรงตัว"
+    user = (f"KOL: {c.get('kol')}  แพลตฟอร์ม: {c.get('platform')}"
+            f"{'  (คอมเมนต์ปักหมุด)' if c.get('pinned') else ''}\n"
+            f"--- โพสต์ (บริบท) ---\n{(c.get('post_caption') or '')[:800]}\n"
+            f"--- คอมเมนต์ที่ KOL เขียนเอง ---\n{(c.get('text') or '')[:2500]}")
+    return sys, user
+
+
 CONFIRM_SCHEMA = {
     "type": "object",
     "properties": {
