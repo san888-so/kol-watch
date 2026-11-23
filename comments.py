@@ -515,7 +515,10 @@ def _save(post, comments, wl, unbranded_wl, alert_cutoff):
             continue
         have.add(cm["comment_id"])
         found = matcher.scan(cm["text"], [], watchlist=wl) if cm["text"] else []
-        if cm["is_kol"] and not found and unbranded_wl and cm["text"]:
+        # Broad words (หุ้นนอก …) count only on a KOL comment that sells
+        # something and does NOT name our client — same rule as posts.
+        if cm["is_kol"] and not found and unbranded_wl and cm["text"] \
+                and not matcher.scan(cm["text"], [], watchlist=matcher.get_client_brands()):
             broad = matcher.scan(cm["text"], [], watchlist=unbranded_wl)
             if broad and matcher.promo_signal(cm["text"], []):
                 found = broad
