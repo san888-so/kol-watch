@@ -9,9 +9,12 @@ name still in it?
 Checks use free public endpoints only (no Apify credit):
   x        cdn.syndication.twimg.com tweet-result → Tweet / TweetTombstone
   tiktok   video page rehydration JSON → statusCode 10204 = deleted
-  threads / facebook / instagram  page fetched as facebookexternalhit →
-           og:description present = live; otherwise "unknown" (FB/IG hide
-           many posts behind login, so unknown keeps the last known result)
+  threads  page fetched as facebookexternalhit → og:url keeps /post/<code>
+           = live; bounced to the site root while the profile still opens
+           = gone (og:description is always present, so it proves nothing)
+  facebook / instagram  same fetch → og:description present = live;
+           otherwise "unknown" (FB/IG hide many posts behind login, so
+           unknown keeps the last known result)
 
 A post confirmed gone also marks matching competitor hits as "removed"; a
 post the team notified that is still up moves new hits to "contacted".
@@ -172,6 +175,31 @@ def _og(body, key):
     return html.unescape(m.group(1)) if m else None
 
 
+def _check_threads(url):
+    """Threads always serves an og:description, even for a deleted post — it
+    bounces to the login page ("Join Threads to share ideas…"), so the generic
+    "og present = live" rule called every deleted post live. Decide by og:url:
+    a live post keeps /post/<code>; a missing one points at the site root.
+    The login page can also mean Threads is walling us, so a post only counts
+    as gone when the author's profile still opens normally."""
+    m = re.search(r"threads\.(?:com|net)/@([\w.]+)/post/([\w-]+)", url)
+    if not m:
+        return "unknown", "", "ลิงก์ Threads ไม่มีรหัสโพสต์"
+    user, code = m.groups()
+    ua = "facebookexternalhit/1.1"
+    s, b = _get(url, ua)
+    og_url = _og(b, "url") or ""
+    if f"/post/{code}" in og_url:
+        d, t = _og(b, "description") or "", _og(b, "title") or ""
+        return "live", d + (" | " + t if t else ""), "Threads"
+    if s != 200 or not re.fullmatch(r"https://www\.threads\.(?:com|net)/?(?:login/?)?", og_url):
+        return "unknown", "", f"Threads ตอบ {s}"
+    _, pb = _get(f"https://www.threads.com/@{user}", ua)
+    if f"/@{user.lower()}" in (_og(pb, "url") or "").lower():
+        return "gone", "", "Threads: โพสต์หายแล้ว (ลบแล้ว หรือบัญชีปิดเป็นส่วนตัว)"
+    return "unknown", "", "Threads: เปิดไม่ได้ทั้งโพสต์และหน้าโปรไฟล์"
+
+
 def check_one(url, platform):
     """→ (state, text, note)"""
     p = (platform or "").lower()
@@ -209,7 +237,9 @@ def check_one(url, platform):
         if d.get("statusCode") in (10204, 10216):
             return "gone", "", f"TikTok: {d.get('statusMsg') or 'deleted'}"
         return "unknown", "", f"TikTok {d.get('statusCode')} {d.get('statusMsg') or ''}"
-    if p in ("threads", "facebook", "instagram", "lemon8", "youtube"):
+    if p == "threads":
+        return _check_threads(url)
+    if p in ("facebook", "instagram", "lemon8", "youtube"):
         if p == "youtube":
             s, b = _get("https://www.youtube.com/oembed?format=json&url=" +
                         urllib.parse.quote(url))
