@@ -452,7 +452,13 @@ def _fetch_youtube(posts):
     counts = {}
     vid_list = list(ids)
     for i in range(0, len(vid_list), 50):
-        d = _yt("videos", part="statistics", id=",".join(vid_list[i:i + 50]))
+        try:
+            d = _yt("videos", part="statistics", id=",".join(vid_list[i:i + 50]))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "ignore")
+            if "quotaExceeded" in body or "dailyLimitExceeded" in body:
+                raise QuotaError("YouTube API quota: " + body[:200])
+            raise
         for it in d.get("items", []):
             counts[it["id"]] = int(it.get("statistics", {}).get("commentCount", 0) or 0)
     for vid, p in ids.items():
@@ -677,47 +683,61 @@ def _notify_pause(reason):
         traceback.print_exc()
 
 
-def run_cycle(stop):
-    """One pass over every platform's due queue (runs platforms in parallel)."""
-    if STATE["running"]:
-        return
-    STATE.update(running=True, started_at=datetime.now(timezone.utc).isoformat())
+_WORKERS = {}          # platform -> number of live worker threads
+_STOP = threading.Event()
+
+
+def _worker(platform, stop):
     try:
-        jobs = []
-        with ThreadPoolExecutor(max_workers=sum(PARALLEL.values())) as ex:
-            for p in platforms():
-                if p not in BATCH:
-                    continue
-                for _ in range(PARALLEL[p]):
-                    jobs.append(ex.submit(_work_platform, p, stop))
-            for j in jobs:
-                j.result()
+        _work_platform(platform, stop)
+    except Exception:
+        traceback.print_exc()
     finally:
-        STATE["running"] = False
+        with _lock:
+            _WORKERS[platform] -= 1
+            STATE["running"] = any(_WORKERS.values())
+
+
+def ensure_workers(stop=None):
+    """Top every switched-on platform up to its PARALLEL worker count. Safe to
+    call any time: a platform switched on mid-round starts right away, one
+    whose queue was empty picks up newly due posts."""
+    stop = stop or _STOP
+    started = 0
+    with _lock:
+        for p in platforms():
+            if p not in BATCH:
+                continue
+            for _ in range(PARALLEL[p] - _WORKERS.get(p, 0)):
+                _WORKERS[p] = _WORKERS.get(p, 0) + 1
+                threading.Thread(target=_worker, args=(p, stop), daemon=True).start()
+                started += 1
+        STATE["running"] = any(_WORKERS.values())
+    if started:
+        STATE["started_at"] = datetime.now(timezone.utc).isoformat()
+    return started
 
 
 def worker_thread(stop):
+    global _STOP
+    _STOP = stop
     init()
     time.sleep(20)
     while not stop.is_set():
         try:
             if enabled():
                 STATE["paused_reason"] = ""
-                run_cycle(stop)
+                ensure_workers(stop)
         except Exception:
             traceback.print_exc()
         stop.wait(900)   # new posts become due over time — look again in 15 min
 
 
 def start_now(stop=None):
-    """Kick a cycle right away (used by the Start button)."""
-    if STATE["running"]:
-        return False
+    """Start (or top up) the workers right away (Start button / config)."""
     STATE["paused_reason"] = ""
     db.set_setting("comments_paused_reason", "")
-    threading.Thread(target=run_cycle, args=(stop or threading.Event(),),
-                     daemon=True).start()
-    return True
+    return ensure_workers(stop)
 
 
 # ───────────────────────────── API ─────────────────────────────
@@ -801,6 +821,6 @@ def configure(payload):
               "comments_scope", "comments_from", "comments_apify_reserve_usd"):
         if k in payload:
             db.set_setting(k, str(payload[k]))
-    if str(payload.get("comments_enabled")) == "1":
-        start_now()
+    if enabled():
+        start_now(_STOP)
     return status()
