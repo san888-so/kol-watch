@@ -601,11 +601,47 @@ def run_batch(platform, posts, claim=True):
     return {"posts": len(posts), "comments": total_new, "hits": total_hits, "usd": usd}
 
 
+_HEADROOM = {"at": 0, "usd": None}
+
+
+def apify_headroom():
+    """$ left before the Apify account's monthly usage limit (cached 2 min).
+    None when it can't be read (then we don't block on it)."""
+    if time.time() - _HEADROOM["at"] < 120:
+        return _HEADROOM["usd"]
+    try:
+        d = requests.get(f"{API}/users/me/limits",
+                         headers={"Authorization": "Bearer " + _token()},
+                         timeout=20).json()["data"]
+        _HEADROOM["usd"] = (float(d["limits"]["maxMonthlyUsageUsd"])
+                            - float(d["current"]["monthlyUsageUsd"]))
+    except Exception:
+        _HEADROOM["usd"] = None
+    _HEADROOM["at"] = time.time()
+    return _HEADROOM["usd"]
+
+
+def reserve_usd():
+    """Apify credit kept back for the hourly post scans — comments never
+    eat into it. Raise the Apify monthly limit and comments carry on by
+    themselves at the next 15-minute look."""
+    try:
+        return float(_s("comments_apify_reserve_usd", "300"))
+    except ValueError:
+        return 300.0
+
+
 def _work_platform(platform, stop):
     while not stop.is_set() and enabled() and not STATE["paused_reason"]:
         if platform != "youtube" and spent_today() >= daily_cap():
             STATE["current"][platform] = "ถึงเพดานเงินวันนี้แล้ว"
             return
+        if platform != "youtube":
+            room = apify_headroom()
+            if room is not None and room < reserve_usd():
+                STATE["current"][platform] = (
+                    f"รอเครดิต Apify (เหลือ ${room:.0f} · กันไว้ให้สแกนโพสต์ ${reserve_usd():.0f})")
+                return
         with _lock:   # claim under a lock so two workers never take the same posts
             posts = due_posts(platform, BATCH[platform])
             if posts:
@@ -715,6 +751,7 @@ def status():
             "last_error": STATE["last_error"], "scope": _s("comments_scope", "exclusive"),
             "from": _s("comments_from", "2026-01-01"), "daily_cap": daily_cap(),
             "spent_today": round(spent_today(), 2), "platforms": plats,
+            "apify_headroom": apify_headroom(), "reserve": reserve_usd(),
             "total_comments": tot["n"] or 0, "kol_comments": tot["kol"] or 0,
             "matched_comments": tot["matched"] or 0,
             "kol_hits": hits["kol_hits"] or 0, "follower_hits": hits["follower_hits"] or 0}
@@ -761,7 +798,7 @@ def hits(status=None):
 
 def configure(payload):
     for k in ("comments_enabled", "comments_platforms", "comments_daily_usd",
-              "comments_scope", "comments_from"):
+              "comments_scope", "comments_from", "comments_apify_reserve_usd"):
         if k in payload:
             db.set_setting(k, str(payload[k]))
     if str(payload.get("comments_enabled")) == "1":

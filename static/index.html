@@ -958,7 +958,7 @@ async function vComments(){
   ${st.paused_reason ? `<div class="note bad">หยุดชั่วคราว: ${esc(st.paused_reason)}</div>` : ''}
   <div class="tiles">
     <div class="tile ${st.enabled ? 'ok' : ''}"><div class="lab">สถานะ</div><div class="num" style="font-size:20px">${st.running ? 'กำลังดึง' : st.enabled ? 'เปิดอยู่' : 'ปิด'}</div><div class="sub">ดูคิวทุก 15 นาที · ดึงตอนโพสต์อายุ 2 วัน + 7 วัน</div></div>
-    <div class="tile"><div class="lab">ใช้เงินวันนี้</div><div class="num">$${st.spent_today.toFixed(2)}</div><div class="sub">เพดาน $${st.daily_cap}/วัน · รวมทั้งหมด $${tot.usd.toFixed(2)}</div></div>
+    <div class="tile"><div class="lab">ใช้เงินวันนี้</div><div class="num">$${st.spent_today.toFixed(2)}</div><div class="sub">เพดาน $${st.daily_cap}/วัน · รวมทั้งหมด $${tot.usd.toFixed(2)}${st.apify_headroom != null ? `<br>เครดิต Apify เหลือ $${num(Math.round(st.apify_headroom))} (กันไว้ให้สแกนโพสต์ $${num(st.reserve)})` : ''}</div></div>
     <div class="tile"><div class="lab">โพสต์ ดึงแล้ว / เหลือ</div><div class="num">${num(tot.done)} / ${num(tot.left)}</div><div class="sub">ประเมินที่เหลือราว $${num(Math.round(tot.est))}</div></div>
     <div class="tile"><div class="lab">คอมเมนต์ที่เก็บ</div><div class="num">${num(st.total_comments)}</div><div class="sub">KOL ตอบเอง ${num(st.kol_comments)}</div></div>
     <div class="tile ${st.kol_hits ? 'alert' : ''}"><div class="lab">KOL ตอบเอง + คำคู่แข่ง</div><div class="num">${num(st.kol_hits)}</div><div class="sub">ผู้ติดตามพูดถึง ${num(st.follower_hits)}</div></div>
