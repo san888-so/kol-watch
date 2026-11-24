@@ -259,7 +259,7 @@ def _save(items, groups, idx, alert_cutoff):
         if kol:                        # the KOL wrote the post
             checks.append(("post", kol, text, "KOL โพสต์เอง"))
         elif g["kind"] == "kol" and g.get("owner_kol") and g["owner_kol"] in idx["chan"]:
-            checks.append(("owner", g["owner_kol"], text, f"ในกลุ่มของ KOL · {p.get('user_name') or 'สมาชิก'} โพสต์"))
+            checks.append(("owner", g["owner_kol"], text, f"คนในกลุ่มโพสต์ ไม่ใช่ KOL: {p.get('user_name') or 'ไม่ทราบชื่อ'}"))
         if tc_kol and tc.get("text"):
             checks.append(("comment", tc_kol, tc.get("text") or "", "KOL คอมเมนต์ในกลุ่ม"))
         for what, who, t, label in checks:
@@ -297,6 +297,40 @@ def _save(items, groups, idx, alert_cutoff):
     return new, hits
 
 
+def _alert_text(h, words):
+    """LINE text that says plainly WHO wrote it: the Exclusive KOL (breach) or a group member."""
+    pid = (h["post_id"] or "")[1:]
+    is_comment = pid.endswith("#tc")
+    pid = pid.removesuffix("#tc")
+    with db._conn() as c:
+        r = c.execute("""SELECT p.author, p.top_comment_author, g.name group_name
+                         FROM group_post p LEFT JOIN fb_group g ON g.key=p.group_key
+                         WHERE p.post_id=?""", (pid,)).fetchone()
+    r = dict(r) if r else {}
+    snip = h["snippet"] or ""
+    label = snip[3:].split("]", 1)[0] if snip.startswith("👥 [") else ""
+    quote = snip.split("] ", 1)[-1].strip()[:280]
+    group = r.get("group_name") or "-"
+    kol = h["kol_name"]
+    if is_comment:
+        head = "🚨 KOL Exclusive คอมเมนต์ถึงคู่แข่งเอง (ผิดเงื่อนไข)"
+        who = f"คนคอมเมนต์: {kol} ← ตัว KOL เอง\nใต้โพสต์ของ: {r.get('author') or '-'}"
+    elif label.startswith("KOL โพสต์เอง"):
+        head = "🚨 KOL Exclusive โพสต์ถึงคู่แข่งเอง (ผิดเงื่อนไข)"
+        who = f"คนโพสต์: {kol} ← ตัว KOL เอง"
+    else:
+        name = r.get("author") or label.split(":", 1)[-1].strip() or "ไม่ทราบชื่อ"
+        head = "ℹ️ มีคนในกลุ่มของ KOL โพสต์ถึงคู่แข่ง (KOL ไม่ได้โพสต์เอง · ไม่ผิด)"
+        who = f"คนโพสต์: {name} (สมาชิกกลุ่ม ไม่ใช่ KOL)\nเจ้าของกลุ่ม: {kol}"
+    return (f"{head}\n{who}\nกลุ่ม: {group}\nคู่แข่งที่พูดถึง: {words}\n"
+            f"ข้อความ: \"{quote}\"\nลิงก์: {h['post_url']}")
+
+
+def _is_member_post(h):
+    snip = h["snippet"] or ""
+    return not (h["post_id"] or "").endswith("#tc") and not snip.startswith("👥 [KOL")
+
+
 def flush_alerts():
     with db._conn() as c:
         rows = [dict(r) for r in c.execute(
@@ -306,9 +340,12 @@ def flush_alerts():
         by_post.setdefault((h["kol_name"], h["post_id"]), []).append(h)
     for hs in by_post.values():
         h = hs[0]
+        if _is_member_post(h):          # San 24 Nov: a member (not the KOL) posting is fine → dashboard only
+            for x in hs:
+                db.mark_notified(x["id"])
+            continue
         words = ", ".join(dict.fromkeys(x["matched_keyword"] for x in hs))
-        txt = (f"👥 KOL Exclusive พูดถึงคู่แข่งในกลุ่ม Facebook\nKOL: {h['kol_name']}\nคำ: {words}\n"
-               f"{(h['snippet'] or '')[:350]}\nโพสต์: {h['post_url']}")
+        txt = _alert_text(h, words)
         try:
             import notify_line
             ok, _ = notify_line.send_texts([txt])
