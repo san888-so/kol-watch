@@ -1013,13 +1013,12 @@ async function vGroups(){
   ${st.last_error ? `<div class="note bad">ล่าสุดผิดพลาด: ${esc(st.last_error)}</div>` : ''}
   <div class="card"><div class="bar"><div class="seg" id="gpw">${[['hits', 'เจอคำคู่แข่ง'], ['kol', 'KOL โพสต์ในกลุ่ม'], ['groups', 'รายชื่อกลุ่ม']].map(([k, l]) => `<button data-w="${k}" class="${GPW === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <button class="btn sm ghost" id="gpRun" style="margin-left:auto">ดึงตอนนี้</button></div>
-  ${GPW === 'hits' ? (hits.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำ</th><th>ข้อความ</th><th></th></tr></thead><tbody>
-    ${hits.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div class="faint small">${fmtTH(h.posted_at)}</div></td><td><span class="chip k">${esc(h.matched_keyword)}</span></td>
-      <td><div class="cap">${esc(h.snippet)}</div></td><td><a class="link nw" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิดโพสต์ ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอ KOL Exclusive พูดถึงคู่แข่งในกลุ่ม</div>')
-  : GPW === 'kol' ? (posts.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>กลุ่ม</th><th>ข้อความ</th><th>คำ</th><th></th></tr></thead><tbody>
-    ${posts.map(p => `<tr><td class="nw"><b>${esc(p.kol_name || p.top_comment_kol)}</b><div class="faint small">${p.kol_name ? 'โพสต์' : 'คอมเมนต์'} · ${fmtTH(p.posted_at)}</div></td><td class="small">${esc(p.group_name || p.group_key)}</td>
-      <td><div class="cap">${esc(((p.kol_name ? p.text : p.top_comment) || '').slice(0, 300))}</div></td><td>${p.matched ? p.matched.split(',').map(k => `<span class="chip k">${esc(k)}</span>`).join('') : ''}</td>
-      <td><a class="link nw" href="${esc(p.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอโพสต์ของ KOL Exclusive</div>')
+  ${GPW === 'hits' ? (hits.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำ</th><th>ข้อความ</th></tr></thead><tbody>
+    ${hits.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div class="faint small">${fmtTH(h.posted_at)}</div><a class="link small" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิดโพสต์ ↗</a></td><td><span class="chip k">${esc(h.matched_keyword)}</span></td>
+      <td><div class="cap">${esc(h.snippet)}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอ KOL Exclusive พูดถึงคู่แข่งในกลุ่ม</div>')
+  : GPW === 'kol' ? (posts.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>กลุ่ม</th><th>ข้อความ</th><th>คำ</th></tr></thead><tbody>
+    ${posts.map(p => `<tr><td class="nw"><b>${esc(p.kol_name || p.top_comment_kol)}</b><div class="faint small">${p.kol_name ? 'โพสต์' : 'คอมเมนต์'} · ${fmtTH(p.posted_at)}</div></td><td class="small">${esc(p.group_name || p.group_key)}<div><a class="link" href="${esc(p.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></div></td>
+      <td><div class="cap">${esc(((p.kol_name ? p.text : p.top_comment) || '').slice(0, 300))}</div></td><td>${p.matched ? p.matched.split(',').map(k => `<span class="chip k">${esc(k)}</span>`).join('') : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอโพสต์ของ KOL Exclusive</div>')
   : `<div class="tblwrap"><table><thead><tr><th>กลุ่ม</th><th>ประเภท</th><th class="num">สมาชิก</th><th class="num">โพสต์ที่เก็บ</th><th>ล่าสุด</th><th>เปิด</th></tr></thead><tbody>
     ${gs.map(g => `<tr><td><a class="link" href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.name || g.key)}</a>${g.note ? `<div class="faint small">${esc(g.note)}</div>` : ''}${g.last_error ? `<div class="faint small">ผิดพลาด: ${esc(g.last_error)}</div>` : ''}</td>
       <td class="small">${g.kind === 'kol' ? 'กลุ่มของ ' + esc(g.owner_kol) : esc(g.section || 'ทั่วไป')}</td><td class="num">${esc(g.members || '')}</td><td class="num">${num(g.posts)}</td>
