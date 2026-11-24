@@ -317,11 +317,18 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         # scans (ม้าเฉียว / SundayBoyInvest: 50-80 a day). If not one of
         # the fetched tweets was seen before, older ones may be missing:
         # read a bigger page once (San, 22 Nov 2026 — full coverage).
-        if (ch["platform"] == "x" and len(posts or []) >= 10
+        # Same for TikTok / Lemon8 / Threads, which read only the last few
+        # posts: if every one is new the KOL may have posted more since the
+        # last round, so read a bigger page once (San, 24 Nov 2026 — every
+        # post of every KOL). Facebook / Instagram already read everything
+        # since the last check (time window), so they are left out.
+        big = {"x": (10, 60), "tiktok": (limit, 30), "lemon8": (limit, 20),
+               "threads": (20, 40)}.get(ch["platform"])
+        if (big and len(posts or []) >= big[0]
                 and not any(db.post_seen(ch["id"], p.get("post_id") or "")
                             for p in posts)):
             try:
-                posts = collectors.collect(ch, limit=60) or posts
+                posts = collectors.collect(ch, limit=big[1]) or posts
             except Exception:
                 pass
         return posts

@@ -333,6 +333,7 @@ const chips = (s, cls = 'k') => (s || '').split(',').filter(Boolean).map(k => `<
 const aiTag = l => l === 'urgent' ? '<span class="st hot">AI ด่วน</span>' : l === 'watch' ? '<span class="st wait">AI เฝ้าระวัง</span>' : '';
 function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('on'), 2600); }
 const ICON = {
+  grp:'<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5M14 14.5c.9-.3 1.9-.5 3-.5 2.6 0 4 1.6 4 4"/>',
   cmt:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
   home:'<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-6h4v6"/>',
   alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
@@ -353,6 +354,7 @@ const NAV = [
     {id:'hits', th:'เจอคำคู่แข่ง', en:'Competitor Hits', ic:'alert', badge:'open_hits'},
     {id:'ai', th:'AI ตรวจโพสต์', en:'AI Review', ic:'ai'},
     {id:'comments', th:'คอมเมนต์ใต้โพสต์', en:'Comments', ic:'cmt', badge:'cmt_hits'},
+    {id:'groups', th:'กลุ่ม Facebook', en:'FB Groups', ic:'grp', badge:'grp_hits'},
     {id:'brand', th:'โพสต์ที่พูดถึง Webull', en:'Client Mentions', ic:'brand'},
     {id:'takedown', th:'ติดตามการลบ', en:'Takedowns', ic:'trash', badge:'td_live'},
   ]},
@@ -992,6 +994,42 @@ async function vComments(){
   $('#cmCap').onchange = async () => { await P('/api/comments/config', {comments_daily_usd: $('#cmCap').value}); toast('บันทึกเพดานแล้ว'); };
 }
 
+/* ═══════════════════════════ FB GROUPS ═══════════════════════════ */
+let GPW = 'hits';
+async function vGroups(){
+  const [st, hs, ps] = await Promise.all([J('/api/groups/status'), J('/api/groups/hits'), J('/api/groups/posts?who=kol&limit=300')]);
+  const hits = hs.hits || [], posts = ps.posts || [], gs = st.groups || [];
+  BADGE.grp_hits = st.open_hits; renderNav();
+  const lr = st.last_round || {};
+  const on = gs.filter(g => g.enabled).length;
+  V().innerHTML = head('กลุ่ม Facebook', `อ่านทุกโพสต์ใหม่ใน ${on} กลุ่ม ทุก ${st.interval_min} นาที · KOL Exclusive โพสต์/คอมเมนต์ในกลุ่มแล้วพูดถึงคู่แข่ง = เด้ง LINE · ในกลุ่มของ KOL เอง ใครโพสต์ชวนสมัครคู่แข่งก็นับ`) + `
+  <div class="tiles">
+    <div class="tile ${st.enabled ? 'ok' : ''}"><div class="lab">สถานะ</div><div class="num" style="font-size:20px">${st.running ? 'กำลังดึง' : st.enabled ? 'เปิดอยู่' : 'ปิด'}</div><div class="sub">${st.now ? esc(st.now) + '<br>' : ''}รอบล่าสุด ${st.last_ok ? fmtTH(st.last_ok) : '—'}</div></div>
+    <div class="tile"><div class="lab">ใช้เงิน</div><div class="num">$${st.spent_today.toFixed(2)}</div><div class="sub">วันนี้ · เพดาน $${st.daily_cap}/วัน<br>7 วัน $${st.week_usd} (${num(st.week_posts)} โพสต์)</div></div>
+    <div class="tile"><div class="lab">โพสต์ที่เก็บ</div><div class="num">${num(st.posts)}</div><div class="sub">ใหม่สุด ${st.newest ? fmtTH(st.newest) : '—'}${lr.new != null ? `<br>รอบล่าสุด +${num(lr.new)} โพสต์` : ''}</div></div>
+    <div class="tile"><div class="lab">KOL Exclusive โพสต์ในกลุ่ม</div><div class="num">${num(st.kol_posts)}</div><div class="sub">${num((st.by_kol || []).length)} คน</div></div>
+    <div class="tile ${st.open_hits ? 'alert' : ''}"><div class="lab">เจอคำคู่แข่ง</div><div class="num">${num(st.hits)}</div><div class="sub">ยังไม่จัดการ ${num(st.open_hits)}</div></div>
+  </div>
+  ${st.last_error ? `<div class="note bad">ล่าสุดผิดพลาด: ${esc(st.last_error)}</div>` : ''}
+  <div class="card"><div class="bar"><div class="seg" id="gpw">${[['hits', 'เจอคำคู่แข่ง'], ['kol', 'KOL โพสต์ในกลุ่ม'], ['groups', 'รายชื่อกลุ่ม']].map(([k, l]) => `<button data-w="${k}" class="${GPW === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <button class="btn sm ghost" id="gpRun" style="margin-left:auto">ดึงตอนนี้</button></div>
+  ${GPW === 'hits' ? (hits.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>คำ</th><th>ข้อความ</th><th></th></tr></thead><tbody>
+    ${hits.map(h => `<tr><td class="nw"><b>${esc(h.kol_name)}</b><div class="faint small">${fmtTH(h.posted_at)}</div></td><td><span class="chip k">${esc(h.matched_keyword)}</span></td>
+      <td><div class="cap">${esc(h.snippet)}</div></td><td><a class="link nw" href="${esc(h.post_url)}" target="_blank" rel="noopener">เปิดโพสต์ ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอ KOL Exclusive พูดถึงคู่แข่งในกลุ่ม</div>')
+  : GPW === 'kol' ? (posts.length ? `<div class="tblwrap"><table><thead><tr><th>KOL</th><th>กลุ่ม</th><th>ข้อความ</th><th>คำ</th><th></th></tr></thead><tbody>
+    ${posts.map(p => `<tr><td class="nw"><b>${esc(p.kol_name || p.top_comment_kol)}</b><div class="faint small">${p.kol_name ? 'โพสต์' : 'คอมเมนต์'} · ${fmtTH(p.posted_at)}</div></td><td class="small">${esc(p.group_name || p.group_key)}</td>
+      <td><div class="cap">${esc(((p.kol_name ? p.text : p.top_comment) || '').slice(0, 300))}</div></td><td>${p.matched ? p.matched.split(',').map(k => `<span class="chip k">${esc(k)}</span>`).join('') : ''}</td>
+      <td><a class="link nw" href="${esc(p.post_url)}" target="_blank" rel="noopener">เปิด ↗</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">ยังไม่เจอโพสต์ของ KOL Exclusive</div>')
+  : `<div class="tblwrap"><table><thead><tr><th>กลุ่ม</th><th>ประเภท</th><th class="num">สมาชิก</th><th class="num">โพสต์ที่เก็บ</th><th>ล่าสุด</th><th>เปิด</th></tr></thead><tbody>
+    ${gs.map(g => `<tr><td><a class="link" href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.name || g.key)}</a>${g.note ? `<div class="faint small">${esc(g.note)}</div>` : ''}${g.last_error ? `<div class="faint small">ผิดพลาด: ${esc(g.last_error)}</div>` : ''}</td>
+      <td class="small">${g.kind === 'kol' ? 'กลุ่มของ ' + esc(g.owner_kol) : esc(g.section || 'ทั่วไป')}</td><td class="num">${esc(g.members || '')}</td><td class="num">${num(g.posts)}</td>
+      <td class="small">${g.last_ok_at ? fmtTH(g.last_ok_at) : '—'}</td><td><input type="checkbox" data-g="${esc(g.key)}" ${g.enabled ? 'checked' : ''}></td></tr>`).join('')}</tbody></table></div>`}
+  <p class="faint small" style="margin-top:10px">ระบุตัว KOL จาก ID เพจ/ลิงก์โปรไฟล์/ชื่อ ที่ตรงกับช่อง Facebook ของ KOL Exclusive · กลุ่มปิดที่ยังไม่ได้เป็นสมาชิกอ่านไม่ได้ · เห็นคอมเมนต์แค่คอมเมนต์บนสุดของแต่ละโพสต์</p></div>`;
+  V().querySelectorAll('#gpw button').forEach(b => b.onclick = () => { GPW = b.dataset.w; vGroups(); });
+  V().querySelectorAll('input[data-g]').forEach(cb => cb.onchange = async () => { await P('/api/groups/config', {enable: {[cb.dataset.g]: cb.checked}}); toast('บันทึกแล้ว'); });
+  $('#gpRun').onclick = async () => { if(!confirm('ดึงทุกกลุ่มตอนนี้? (ใช้เครดิต Apify ราว $0.0015/โพสต์)')) return; const r = await P('/api/groups/run', {}); toast(r.error ? 'กำลังดึงอยู่แล้ว' : 'เริ่มดึงแล้ว'); setTimeout(vGroups, 1500); };
+}
+
 async function vBrand(){
   STATE = STATE || await J('/api/state');
   const bh = STATE.brand_hits || [], groups = {};
@@ -1069,7 +1107,7 @@ async function vSettings(){
 }
 
 /* ═══════════════════════════ router + status ═══════════════════════════ */
-const VIEWS = {home:vHome, hits:vHits, ai:vAi, comments:vComments, brand:vBrand, takedown:vTakedown, log:vLog, keywords:vKeywords, channels:vChannels, counts:vCounts, blocked:vBlocked, db:vDb, settings:vSettings};
+const VIEWS = {home:vHome, hits:vHits, ai:vAi, comments:vComments, groups:vGroups, brand:vBrand, takedown:vTakedown, log:vLog, keywords:vKeywords, channels:vChannels, counts:vCounts, blocked:vBlocked, db:vDb, settings:vSettings};
 async function route(){
   const id = (location.hash.slice(1) || 'home').split('/')[0];
   VIEW = VIEWS[id] ? id : 'home'; renderNav(); setMenu(false); closeDrawer();

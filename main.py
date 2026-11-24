@@ -18,6 +18,7 @@ import scheduler
 import ai_review
 import takedown
 import comments
+import groups
 import notify_line
 import dash_api
 import hr_auth
@@ -488,6 +489,9 @@ API_DOCS = {
         "/api/posts_q?q=&platform=&excl=excl|non&kol=&flag=hit|brand|urgent|watch&from=&to=&sort=&page=&size=": "search the post database",
         "/api/post?id=": "one post with its hits and AI verdict",
         "/api/takedowns": "links the team asked KOLs to delete/edit + real check (gone / live / edited)",
+        "/api/groups/status": "FB groups: list, last round, spend, Exclusive KOL posts per KOL",
+        "/api/groups/posts?who=kol|matched|all&group=&limit=": "stored FB group posts",
+        "/api/groups/hits?status=new": "Exclusive KOL breaches found in FB groups",
         "/api/comments/status": "comment pulling: per-platform done/left/cost, today's spend, cap",
         "/api/comments?who=kol|all&hit=1&kol=&platform=&text=&post=&page=": "search stored comments",
         "/api/comments/hits?status=new|follower|ai_none": "comments that name a competitor (+ AI verdict)",
@@ -509,6 +513,8 @@ API_DOCS = {
         "/api/hit_status": "mark a hit handled {id, status}",
         "/api/takedowns": "upsert takedown links {items:[{url, kol, platform, brand, action, sheet_status, ...}]}",
         "/api/takedowns/recheck": "re-check notified takedown links now (free, no Apify) {ids?}",
+        "/api/groups/config": "FB groups {groups_enabled, groups_interval_min, groups_daily_usd, groups_extra_regex, add_groups:[{url,name,kind,owner_kol}], enable:{key:bool}, fb_authors:{fb_id:kol}}",
+        "/api/groups/run": "fetch every FB group now (costs Apify credit)",
         "/api/comments/config": "comment pulling on/off + settings {comments_enabled, comments_platforms, comments_daily_usd, comments_scope, comments_from}",
         "/api/dca_report_test": "send the daily report to LINE NOW (broadcasts!)",
         "/api/ai/review": "(agent) save AI verdicts {model, results:[{seen_post_id, level, competitors, ...}]}",
@@ -547,6 +553,9 @@ DASH_GET = {
     "/api/post": lambda q: dash_api.post_detail(int(_q1(q, "id", "0") or 0)),
     "/api/takedowns": lambda q: takedown.listing(),
     "/api/comments/status": lambda q: comments.status(),
+    "/api/groups/status": lambda q: groups.status(),
+    "/api/groups/posts": lambda q: groups.posts(q),
+    "/api/groups/hits": lambda q: groups.hits(_q1(q, "status", "") or None),
     "/api/comments": lambda q: comments.listing(q),
     "/api/comments/hits": lambda q: {"hits": comments.hits(_q1(q, "status", "") or None)},
     "/api/ai/comments_pending": lambda q: _ai_comments_pending(q),
@@ -833,6 +842,10 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = takedown.recheck_async(ids=payload.get("ids")), 200
             elif path == "/api/comments/config":
                 r, c = comments.configure(payload), 200
+            elif path == "/api/groups/config":
+                r, c = groups.configure(payload), 200
+            elif path == "/api/groups/run":
+                r, c = groups.start_now(), 200
             elif path == "/api/ai/comment_review":
                 r, c = comments.ai_save(payload), 200
             else:
@@ -858,6 +871,9 @@ def main():
                      daemon=True).start()
     comments.init()
     threading.Thread(target=comments.worker_thread, args=(stop,),
+                     daemon=True).start()
+    groups.init()
+    threading.Thread(target=groups.worker_thread, args=(stop,),
                      daemon=True).start()
     # Local default 127.0.0.1; on a hosted env (Railway sets PORT) bind
     # 0.0.0.0 so the platform's router can reach us. Override via env.
