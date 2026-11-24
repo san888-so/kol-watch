@@ -180,13 +180,21 @@ def due_posts(platform, limit, now=None, count=False):
     frm = _s("comments_from", "2026-01-01")[:10]
     p1_before = (now - timedelta(days=2)).isoformat()
     p2_before = (now - timedelta(days=7)).isoformat()
+    # Hourly mode (db.hourly_until): posts still young are read again every
+    # hour — Facebook up to 2 days old (charged per NEW comment only), the
+    # others (no time filter, every read pays again) up to 1 day old.
+    if db.hourly_until():
+        h_from = (now - timedelta(days=2 if platform == "facebook" else 1)).isoformat()
+        h_stale = (now - timedelta(minutes=55)).isoformat()
+    else:
+        h_from, h_stale = "9999", ""
     with db._conn() as c:
         cols = "COUNT(*) n" if count else """sp.id seen_post_id, sp.post_id, sp.post_url, sp.posted_at,
                    ch.id channel_id, ch.platform, ch.profile_url,
                    ch.channel_id_cache, k.name kol_name,
                    cf.passes, cf.last_fetched"""
         tail = "" if count else "ORDER BY sp.posted_at DESC LIMIT ?"
-        args = [platform, frm, p1_before, p2_before] + ([] if count else [limit])
+        args = [platform, frm, p1_before, p2_before, h_from, h_stale] + ([] if count else [limit])
         rows = c.execute(f"""
             SELECT {cols}
             FROM seen_post sp
@@ -200,8 +208,10 @@ def due_posts(platform, limit, now=None, count=False):
               AND (
                 (cf.seen_post_id IS NULL AND sp.posted_at <= ?)
                 OR (cf.status IN ('retry','error') AND cf.attempts < 3)
-                OR (cf.status='ok' AND cf.passes=1 AND sp.posted_at <= ?
+                OR (cf.status='ok' AND cf.passes>=1 AND sp.posted_at <= ?
                     AND julianday(cf.last_fetched) - julianday(sp.posted_at) < 6)
+                OR (sp.posted_at >= ? AND (cf.seen_post_id IS NULL
+                    OR (cf.status='ok' AND cf.last_fetched <= ?)))
               )
             {tail}""", args).fetchall()
         if count:
@@ -336,7 +346,8 @@ def _fetch_apify(platform, posts):
     since = None
     # pass 2: only comments newer than the first fetch (FB charges per comment)
     if all(p.get("passes") for p in posts):
-        since = min(p["last_fetched"] for p in posts)[:10]
+        t = datetime.fromisoformat(min(p["last_fetched"] for p in posts)) - timedelta(minutes=10)
+        since = t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if platform == "facebook":
         payload = {"startUrls": [{"url": u} for u in urls],
                    "includeNestedComments": True, "viewOption": "RANKED_UNFILTERED"}
@@ -1004,7 +1015,7 @@ def status():
                       "usd": round(s.get("usd") or 0, 2),
                       "est_left_usd": round(left * EST_PER_POST.get(p, 0), 0),
                       "now": STATE["current"].get(p, "")})
-    return {"enabled": enabled(), "running": STATE["running"],
+    return {"hourly_until": db.hourly_until(), "enabled": enabled(), "running": STATE["running"],
             "paused_reason": STATE["paused_reason"] or _s("comments_paused_reason", ""),
             "last_error": STATE["last_error"], "scope": _s("comments_scope", "exclusive"),
             "from": _s("comments_from", "2026-01-01"), "daily_cap": daily_cap(),

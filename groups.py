@@ -88,6 +88,8 @@ def enabled():
 
 
 def interval_min():
+    if db.hourly_until():
+        return 60
     try:
         return max(30, int(float(_s("groups_interval_min", "120"))))
     except ValueError:
@@ -455,6 +457,7 @@ def status():
         last = None
     return {"enabled": enabled(), "running": STATE["running"], "now": STATE["current"],
             "last_error": STATE["last_error"], "interval_min": interval_min(),
+            "hourly_until": db.hourly_until(),
             "daily_cap": daily_cap(), "spent_today": round(spent_today(), 3),
             "spent_total": round(usd_all, 2),
             "week_usd": round(week[0] or 0, 2), "week_posts": week[1] or 0,

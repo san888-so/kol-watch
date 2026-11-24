@@ -706,6 +706,8 @@ def scheduler_thread(stop_event):
                 times = [t.strip() for t in
                          (db.get_setting("run_times", "08:00,16:00") or "").split(",")
                          if t.strip()]
+                if db.hourly_until():   # every channel every hour (until set date)
+                    times = db.HOURLY_TIMES
                 for hhmm in times:
                     if _due(hhmm, last_fired):
                         last_fired[hhmm] = today

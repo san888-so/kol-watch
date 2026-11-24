@@ -231,6 +231,25 @@ def set_setting(key, value):
         c.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (key, str(value)))
 
 
+def hourly_until():
+    """'Everything every hour' mode (San, 24 Nov 2026: hourly until the end
+    of 30 Nov). Setting `hourly_until` = ISO time; '' or past = off, and every
+    job falls back to its normal rhythm by itself."""
+    v = (get_setting("hourly_until", "") or "").strip()
+    if not v:
+        return ""
+    try:
+        t = datetime.fromisoformat(v)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return v if datetime.now(timezone.utc) < t else ""
+    except ValueError:
+        return ""
+
+
+HOURLY_TIMES = [f"{h:02d}:00" for h in range(24)]
+
+
 # --- KOL / channel ---
 
 def upsert_kol(name, tier="", exclusivity="", active=1):

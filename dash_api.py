@@ -77,6 +77,8 @@ def next_run():
     times = sorted(t.strip() for t in
                    (db.get_setting("run_times", "08:00,16:00") or "").split(",")
                    if t.strip())
+    if db.hourly_until():
+        times = list(db.HOURLY_TIMES)
     cands = []
     for day in (0, 1):
         d = (now + timedelta(days=day)).strftime("%Y-%m-%d")
@@ -97,7 +99,7 @@ def next_run():
         return {"at": None, "label": "ไม่มีรอบที่ตั้งไว้"}
     t, kind = min(cands)
     return {"at": _iso(t), "kind": kind, "times": times,
-            "hourly_until": until if hourly else ""}
+            "hourly_until": until if hourly else "", "all_hourly_until": db.hourly_until()}
 
 
 # ------------------------------------------------------------ scan log
