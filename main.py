@@ -625,6 +625,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         try:
+            if path == "/healthz":   # no login: for outside watchdogs
+                import health
+                ok, info = health.check()
+                self._json(200 if ok else 503, info)
+                return
             if path == "/login":
                 q = parse_qs(urlparse(self.path).query)
                 msg = {"failed": "เข้าด้วย LINE ไม่สำเร็จ ลองอีกครั้งหรือใช้รหัสผ่าน SO! HR",
