@@ -563,6 +563,10 @@ DASH_GET = {
 
 
 class Handler(BaseHTTPRequestHandler):
+    # A connection that never sends (or never finishes) its request would
+    # otherwise hold a thread forever.
+    timeout = 120
+
     def log_message(self, *a):
         pass
 
