@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import db
 
 RUNNING_MAX_MIN = 90      # a round normally takes ~10 min
+BOOT = datetime.now(timezone.utc)
 
 
 def _read(path):
@@ -90,7 +91,11 @@ def check():
     limit = _scan_limit_min()
     scan["limit_min"] = limit
     if done:
-        age = (now - datetime.fromisoformat(done["finished_at"])).total_seconds() / 60
+        # Count from boot if that is later: a fresh process gets one full
+        # interval to run a round before it is called stale (else a restart
+        # would look broken until the next round, and selfheal would loop).
+        since = max(datetime.fromisoformat(done["finished_at"]), BOOT)
+        age = (now - since).total_seconds() / 60
         scan["last_done"] = done["finished_at"]
         scan["age_min"] = round(age)
         if age > limit:

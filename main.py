@@ -873,6 +873,12 @@ def main():
     db.init()
     hr_auth.init()
     stop = threading.Event()
+    # Self-heal guard first, so it exists before anything can use up the
+    # thread limit (26 Nov 2026 outage).
+    import selfheal
+    threading.Thread(target=selfheal.guard_thread, args=(stop, PORT),
+                     daemon=True).start()
+    threading.Thread(target=selfheal.announce_restart, daemon=True).start()
     threading.Thread(target=scheduler.scheduler_thread, args=(stop,),
                      daemon=True).start()
     takedown.init()
