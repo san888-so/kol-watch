@@ -183,9 +183,20 @@ def due_posts(platform, limit, now=None, count=False):
     # Hourly mode (db.hourly_until): posts still young are read again every
     # hour — Facebook up to 2 days old (charged per NEW comment only), the
     # others (no time filter, every read pays again) up to 1 day old.
+    # After it ends they are read every `comments_young_every_min` (San,
+    # 28 Nov 2026: every 2 hours from 1 Dec; 0 = only the day-2/day-7
+    # passes). A little under the round so a 15-min worker tick never
+    # pushes a read to the next cycle.
     if db.hourly_until():
+        every = 55
+    else:
+        try:
+            every = int(_s("comments_young_every_min", "115") or "0")
+        except ValueError:
+            every = 115
+    if every > 0:
         h_from = (now - timedelta(days=2 if platform == "facebook" else 1)).isoformat()
-        h_stale = (now - timedelta(minutes=55)).isoformat()
+        h_stale = (now - timedelta(minutes=every)).isoformat()
     else:
         h_from, h_stale = "9999", ""
     with db._conn() as c:
@@ -1076,7 +1087,8 @@ def hits(status=None):
 
 def configure(payload):
     for k in ("comments_enabled", "comments_platforms", "comments_daily_usd",
-              "comments_scope", "comments_from", "comments_apify_reserve_usd"):
+              "comments_scope", "comments_from", "comments_apify_reserve_usd",
+              "comments_young_every_min"):
         if k in payload:
             db.set_setting(k, str(payload[k]))
     if enabled():
