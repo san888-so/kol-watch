@@ -468,7 +468,8 @@ def api_settings(payload):
               "dca_campaigns", "dca_links",
               "ai_review_enabled", "ai_alerts_enabled",
               "ai_alert_max_age_days", "ai_review_policy",
-              "extra_channels", "exclusive_override", "hr_users"):
+              "extra_channels", "exclusive_override", "hr_users",
+              "relay_channels", "relay_max_age_h"):
         if k in payload:
             db.set_setting(k, payload[k])
     if payload.get("line_token"):
