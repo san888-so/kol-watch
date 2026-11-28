@@ -68,10 +68,18 @@ def load_conf():
 
 
 # ---------------------------------------------------------------- cookies
+def _browser_call(page, method, params=None):
+    """CDP call on the BROWSER target, not the tab: cookies live in the
+    browser, and the tab we opened can be closed or swapped while someone
+    logs in (28 Nov 2026: "Session with given id not found")."""
+    b = page._b
+    return b._runner.run(b._conn.send(method, params or {}))
+
+
 def get_cookies(page):
-    res = page._call("Network.getCookies",
-                     {"urls": ["https://www.facebook.com"]})
-    return res.get("cookies", [])
+    res = _browser_call(page, "Storage.getCookies")
+    return [c for c in res.get("cookies", [])
+            if (c.get("domain") or "").lstrip(".").endswith("facebook.com")]
 
 
 def save_cookies(page):
@@ -92,7 +100,7 @@ def load_cookies(page):
         return False
     with open(COOKIES) as f:
         cs = json.load(f)
-    page._call("Network.setCookies", {"cookies": cs})
+    _browser_call(page, "Storage.setCookies", {"cookies": cs})
     return True
 
 
@@ -200,14 +208,18 @@ def cmd_login(args):
         page.goto("https://www.facebook.com/login", wait_until="load")
         log("ล็อกอินบัญชี FB สำรองในหน้าต่าง Chrome ที่เปิดขึ้นมา (รอได้ 15 นาที)")
         for _ in range(300):
-            if logged_in(page):
-                break
+            try:
+                if logged_in(page):
+                    break
+            except Exception as e:   # Chrome busy / closing: try again
+                log("รอ...", str(e)[:80])
             time.sleep(3)
         else:
             raise SystemExit("ไม่เห็นการล็อกอินภายใน 15 นาที")
         time.sleep(5)   # let FB finish setting its cookies
-        save_cookies(page)
-        log("บันทึก cookie แล้ว:", COOKIES)
+        if not save_cookies(page):
+            raise SystemExit("ล็อกอินแล้วแต่บันทึก cookie ไม่ได้ ลองใหม่อีกครั้ง")
+        log("ล็อกอินแล้ว บันทึก cookie ที่", COOKIES)
     finally:
         b.close()
     if args.copy_to:
