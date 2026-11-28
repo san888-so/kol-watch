@@ -6,6 +6,7 @@ channel blocked so it surfaces in the digest (never silently 'clean').
 """
 from . import youtube_rss, apify_profile, brightdata_profile, lemon8
 import db
+import relay
 
 _APIFY = {"tiktok", "instagram", "facebook", "x", "threads"}
 _QUOTA = ("hard limit", "platform-feature-disabled", "monthly usage")
@@ -53,6 +54,10 @@ def date_from_id(platform, post_id):
 
 def _collect(channel, limit=10, windowed=True):
     platform = channel["platform"]
+    # Pages only a logged-in browser can read: posts are pushed in from
+    # sanmini (relay/fb_relay.py) instead of fetched here — see relay.py.
+    if relay.is_relay(channel):
+        return relay.collect(channel)
     if platform == "youtube":
         # Same quota cost for 3 or 15 items (1 API unit / free RSS), and a
         # channel posting Shorts can add 4+ videos between scans.

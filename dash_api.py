@@ -43,6 +43,10 @@ def _json(s, default):
 # ------------------------------------------------------------ blocked reasons
 def classify_error(err):
     e = (err or "").lower()
+    if e.startswith("relay:"):   # pushed in from sanmini (relay.py)
+        return ("relay", "ตัวดึงบน sanmini",
+                "หน้านี้ต้องล็อกอินถึงจะเห็น ดึงด้วยบัญชี FB สำรองบน sanmini "
+                "ถ้าบัญชีหลุดให้ล็อกอินใหม่ตามขั้นตอนใน relay/README.md")
     if "not_available" in e or "only shared it with" in e or "login" in e:
         return ("private", "ต้องล็อกอินถึงจะเห็น",
                 "เป็นโปรไฟล์ส่วนตัวหรือจำกัดผู้ชม ระบบดึงแบบไม่ล็อกอินเลยไม่เห็นโพสต์ "

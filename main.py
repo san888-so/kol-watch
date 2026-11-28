@@ -22,6 +22,7 @@ import groups
 import notify_line
 import dash_api
 import hr_auth
+import relay
 
 # Railway injects PORT; locally use KOLWATCH_PORT (default 5070).
 PORT = int(os.environ.get("PORT") or os.environ.get("KOLWATCH_PORT") or "5070")
@@ -486,6 +487,7 @@ API_DOCS = {
         "/api/channels": "every monitored channel grouped by KOL (Exclusive first)",
         "/api/post_counts": "posts per channel per month (?year=2026)",
         "/api/blocked": "channels that could not be checked, with reason + fix",
+        "/api/relay_status": "posts pushed in from sanmini for login-only pages (relay_channels)",
         "/api/posts_q?q=&platform=&excl=excl|non&kol=&flag=hit|brand|urgent|watch&from=&to=&sort=&page=&size=": "search the post database",
         "/api/post?id=": "one post with its hits and AI verdict",
         "/api/takedowns": "links the team asked KOLs to delete/edit + real check (gone / live / edited)",
@@ -506,6 +508,7 @@ API_DOCS = {
         "/api/ai/pending?limit=5": "(agent) next posts for the AI to read",
     },
     "POST": {
+        "/api/relay_posts": "(sanmini) push posts of a login-only page {profile_url, ok, error, source, posts:[{post_id,url,posted_at,caption,hashtags}]}",
         "/api/settings": "change settings (watchlist, watchlist_unbranded, run_times, dca_campaigns, ...)",
         "/api/sync": "re-sync KOL list from the Google Sheet",
         "/api/run": "run a full scan now (costs Apify credit)",
@@ -548,6 +551,7 @@ DASH_GET = {
     "/api/channels": lambda q: dash_api.channels(),
     "/api/post_counts": lambda q: dash_api.post_counts(_q1(q, "year", "2026") or 2026),
     "/api/blocked": lambda q: dash_api.blocked(),
+    "/api/relay_status": lambda q: relay.status(),
     "/api/tables": lambda q: dash_api.tables(),
     "/api/posts_q": lambda q: dash_api.posts_query(q),
     "/api/post": lambda q: dash_api.post_detail(int(_q1(q, "id", "0") or 0)),
@@ -827,6 +831,8 @@ class Handler(BaseHTTPRequestHandler):
                 r, c = api_run()
             elif path == "/api/stop":
                 r, c = api_stop()
+            elif path == "/api/relay_posts":
+                r, c = relay.push(payload)
             elif path == "/api/import_posts":
                 r, c = api_import_posts(payload)
             elif path == "/api/brand_backfill":

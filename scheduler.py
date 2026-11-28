@@ -241,7 +241,7 @@ def _is_old_post(posted_at):
 # Errors a retry cannot fix (FB profile shown to friends only, quota out).
 _NO_RETRY = ("not_available", "only shared it", "hard limit",
              "platform-feature-disabled", "monthly usage",
-             "restricted profile", "ไม่พบบัญชี")
+             "restricted profile", "ไม่พบบัญชี", "relay:")
 
 
 def _collect_with_retry(ch, limit):
