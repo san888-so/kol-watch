@@ -514,8 +514,12 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
             f"โพสต์ใหม่: {new_posts}\n"
             f"⚠️ เจอคำคู่แข่ง: {len(comp_posts)} โพสต์\n"
             f"📊 เจอโพส {brand_label}: {brand_sent}  (เฉพาะโพสต์ลงภายใน {max_age_days} วัน)\n"
-            f"❌ เช็กไม่ได้: {blocked}"
         )
+        try:
+            summary += "\n" + _fetch_status_lines(len(channels), blocked) + "\n"
+        except Exception:
+            traceback.print_exc()
+        summary += f"❌ เช็กไม่ได้: {blocked}"
         if blocked_list:
             summary += "\n" + _blocked_lines(blocked_list)
         if comp_posts:
@@ -560,6 +564,76 @@ def run_once(triggered_by="manual", only_before=None, exclusive_only=False):
         _STOP.clear()
     return {"ok": True, "new_posts": new_posts, "hits": hits,
             "hit_posts": len(comp_posts), "blocked": blocked}
+
+
+def _ago_th(iso):
+    """(hours since iso, 'HH:MM' Thai time) — (None, '') when unknown."""
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None, ""
+    h = (datetime.now(timezone.utc) - d).total_seconds() / 3600
+    return h, d.astimezone(TH_TZ).strftime("%H:%M")
+
+
+def _fetch_status_lines(n_channels, n_blocked):
+    """'Is every feed still coming in?' block for the digest (San, 28 Nov
+    2026): KOL posts, Facebook groups and comments, one line each."""
+    lines = ["🩺 สถานะการดึงข้อมูล"]
+    ok_ch = n_channels - n_blocked
+    mark = "✅" if n_blocked <= max(5, n_channels * 0.03) else "⚠️"
+    lines.append(f"{mark} โพสต์ปกติ: ดึงได้ {ok_ch}/{n_channels} ช่อง")
+
+    try:
+        import groups
+        if not groups.enabled():
+            lines.append("⏸️ Facebook Group: ปิดอยู่")
+        else:
+            last = json.loads(db.get_setting("groups_last_round", "") or "null") or {}
+            h, hhmm = _ago_th(db.get_setting("groups_last_round_ok", "") or "")
+            limit_h = (2 * groups.interval_min() + 30) / 60
+            err = groups.STATE.get("last_error") or ""
+            if h is None or h > limit_h:
+                lines.append("⚠️ Facebook Group: ไม่ได้ดึงมา "
+                             + ("นานแล้ว" if h is None else f"{h:.0f} ชม.")
+                             + (f" — {err[:60]}" if err else ""))
+            else:
+                bad = last.get("errors") or 0
+                lines.append(f"{'⚠️' if bad or err else '✅'} Facebook Group: "
+                             f"{last.get('groups', '?')} กลุ่ม · ล่าสุด {hhmm} · "
+                             f"โพสต์ใหม่ {last.get('new', 0)}"
+                             + (f" · error {bad} กลุ่ม" if bad else ""))
+    except Exception as e:
+        lines.append(f"⚠️ Facebook Group: อ่านสถานะไม่ได้ ({str(e)[:50]})")
+
+    try:
+        import comments
+        if not comments.enabled():
+            lines.append("⏸️ คอมเมนต์: ปิดอยู่")
+        else:
+            paused = (comments.STATE.get("paused_reason")
+                      or db.get_setting("comments_paused_reason", "") or "")
+            err = comments.STATE.get("last_error") or ""
+            day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+            with db._conn() as c:
+                last_f = c.execute("SELECT MAX(last_fetched) FROM comment_fetch "
+                                   "WHERE status='ok'").fetchone()[0]
+                n24 = c.execute("SELECT COUNT(*) FROM comment WHERE scraped_at>=?",
+                                (day_ago,)).fetchone()[0]
+            h, hhmm = _ago_th(last_f or "")
+            if paused:
+                lines.append(f"⚠️ คอมเมนต์: หยุดพัก — {paused[:70]}")
+            elif h is None or h > 6:
+                lines.append("⚠️ คอมเมนต์: ไม่ได้ดึงมา "
+                             + ("นานแล้ว" if h is None else f"{h:.0f} ชม.")
+                             + (f" — {err[:60]}" if err else ""))
+            else:
+                lines.append(f"✅ คอมเมนต์: ล่าสุด {hhmm} · 24 ชม. ได้ {n24:,} คอมเมนต์")
+    except Exception as e:
+        lines.append(f"⚠️ คอมเมนต์: อ่านสถานะไม่ได้ ({str(e)[:50]})")
+    return "\n".join(lines)
 
 
 def _apify_budget_line():

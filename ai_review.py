@@ -165,8 +165,10 @@ def digest_line():
     if not s["enabled"]:
         return ""
     st = s["last24h"]
-    line = (f"🤖 AI อ่านโพสต์ (24 ชม.): 🔴 ด่วน {st.get('urgent', 0)} · "
-            f"🟠 เฝ้าระวัง {st.get('watch', 0)} · รออ่าน {s['pending']}")
+    # AI reads every new post (not just keyword hits): 🔴 = likely promotes a
+    # competitor / another broker, 🟠 = unclear, worth a human look.
+    line = (f"🤖 AI อ่านทุกโพสต์ใหม่ (24 ชม.): 🔴 น่าจะโปรคู่แข่ง {st.get('urgent', 0)} · "
+            f"🟠 ควรดูอีกที {st.get('watch', 0)} · ⏳ ยังไม่ได้อ่าน {s['pending']}")
     q = s["agent_quiet_min"]
     if q is None or q > 20:
         line += ("\n⚠️ AI agent บน sanmini เงียบ "
